@@ -1,19 +1,62 @@
-# Ambiente virtual Python
-.venv/
-venv/
-
-# Cache Python
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
 
-# Configurações locais
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# Variáveis de ambiente e informações sensíveis
 .env
+.env.*
+!.env.example
+.envrc
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# Testes e cobertura
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.pytest_cache/
+.hypothesis/
+
+# Distribuição e pacotes
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+
+# Ferramentas Python
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+cython_debug/
 
 # Configurações do editor
 .vscode/
+.idea/
 
-# Notebooks
-.ipynb_checkpoints/
-
-# Arquivos temporários
-*.log
+# Arquivos temporários do sistema
+.DS_Store
+Thumbs.db
+tempCodeRunnerFile.py
