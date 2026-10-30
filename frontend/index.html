@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodeVision — o código por trás da imagem</title>
+  <meta name="description" content="CodeVision: reconhecimento de código Morse em imagens com Django REST Framework e uma CNN em PyTorch.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <header class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Projeto acadêmico · Visão computacional</p>
+      <h1 class="hero__title">
+        CodeVision
+        <span class="hero__subtitle">o código por trás da imagem.</span>
+      </h1>
+
+      <div class="morse" aria-hidden="true">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="gap"></span>
+        <span class="dash"></span><span class="dash"></span><span class="dash"></span>
+        <span class="gap"></span>
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      </div>
+
+      <p class="lead">
+        Uma imagem com pontos e traços entra por uma API; uma rede neural
+        convolucional identifica cada símbolo, um a um, e devolve o que encontrou
+        — com a posição, a classe e o grau de certeza de cada leitura.
+      </p>
+
+      <dl class="facts">
+        <div><dt>Backend</dt><dd>Django + DRF</dd></div>
+        <div><dt>Modelo</dt><dd>CNN em PyTorch</dd></div>
+        <div><dt>Segmentação</dt><dd>OpenCV</dd></div>
+        <div><dt>Classes</dt><dd>fundo · ponto · traço</dd></div>
+      </dl>
+
+      <a class="scroll-hint" href="#proposito">Ler a partir do começo ↓</a>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- 01 · PROPÓSITO -->
+    <section id="proposito" class="section">
+      <div class="wrap grid">
+        <header class="section__head">
+          <span class="section__num">01</span>
+          <h2>Propósito</h2>
+        </header>
+
+        <div class="section__body prose">
+          <p class="big">
+            Ensinar uma máquina a <em>ler</em> uma mensagem codificada do mesmo jeito
+            que uma pessoa faria: olhando para a imagem, separando cada marca e
+            decidindo se ela é um ponto ou um traço.
+          </p>
+          <p>
+            O CodeVision nasceu como projeto de Engenharia de Software para unir três
+            áreas que raramente aparecem juntas em trabalhos de graduação: processamento
+            digital de imagens, aprendizado de máquina e desenvolvimento web. O primeiro
+            sistema de codificação suportado é o código Morse — simples o bastante para
+            ser verificado à mão, rico o bastante para exigir decisões reais de engenharia.
+          </p>
+          <p>
+            O princípio que guia a arquitetura é a separação de responsabilidades:
+            <strong>reconhecer</strong> o que há na imagem é um problema; <strong>interpretar</strong>
+            o que isso significa é outro. Cada um vive no seu próprio módulo e pode ser
+            testado de forma independente.
+          </p>
+
+          <ul class="pillars">
+            <li>
+              <h3>Ver</h3>
+              <p>Receber, validar e preparar a imagem enviada pelo usuário.</p>
+            </li>
+            <li>
+              <h3>Reconhecer</h3>
+              <p>Localizar cada marca e classificá-la com uma rede neural.</p>
+            </li>
+            <li>
+              <h3>Explicar</h3>
+              <p>Devolver posição, classe e confiança de cada símbolo — nada escondido.</p>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 · ARQUITETURA -->
+    <section id="arquitetura" class="section section--dark">
+      <div class="wrap grid">
+        <header class="section__head">
+          <span class="section__num">02</span>
+          <h2>Arquitetura</h2>
+        </header>
+
+        <div class="section__body">
+          <p class="prose big">
+            Um backend Django REST fino na borda, uma camada de serviços no meio e
+            o módulo de IA isolado no fundo. Cada camada só conhece a de baixo.
+          </p>
+
+          <ol class="layers">
+            <li class="layer">
+              <div class="layer__tag">Borda HTTP</div>
+              <div class="layer__main">
+                <h3>views.py</h3>
+                <p>Recebe o <code>multipart/form-data</code>, aciona as validações, chama o
+                  serviço e traduz cada exceção de domínio em um status HTTP coerente.</p>
+              </div>
+              <div class="layer__files">urls.py · views.py</div>
+            </li>
+            <li class="layer">
+              <div class="layer__tag">Contrato</div>
+              <div class="layer__main">
+                <h3>serializers.py + validators.py</h3>
+                <p>Validação em duas etapas: o serializer confere o campo <code>imagem</code>;
+                  os validadores reabrem o arquivo com Pillow para checar formato real,
+                  dimensões e integridade — sem confiar na extensão enviada.</p>
+              </div>
+              <div class="layer__files">PNG · JPEG · WEBP · BMP · ≤ 10 MB · ≤ 10 000 px</div>
+            </li>
+            <li class="layer">
+              <div class="layer__tag">Serviço</div>
+              <div class="layer__main">
+                <h3>ServicoReconhecimento</h3>
+                <p>Carrega o modelo sob demanda, uma única vez por processo, protegido por
+                  <code>threading.Lock</code>. Corrige a orientação EXIF, converte para RGB,
+                  delega à IA e normaliza o resultado para o contrato da API.</p>
+              </div>
+              <div class="layer__files">services.py · exceptions.py</div>
+            </li>
+            <li class="layer">
+              <div class="layer__tag">Inteligência</div>
+              <div class="layer__main">
+                <h3>Pacote ia/</h3>
+                <p>Independente do Django. Pré-processamento, segmentação, a CNN e o
+                  treinamento podem ser usados direto no terminal ou em um notebook.</p>
+              </div>
+              <div class="layer__files">preprocessamento · reconhecimento · modelo · treinamento</div>
+            </li>
+          </ol>
+
+          <h3 class="subhead">Endpoints</h3>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr><th>Método</th><th>Rota</th><th>Função</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><span class="verb">GET</span></td><td><code>/api/health/</code></td><td>Confirma que o backend está no ar.</td></tr>
+                <tr><td><span class="verb">GET</span></td><td><code>/api/reconhecimento/status/</code></td><td>Informa se o arquivo do modelo existe e se já está carregado em memória — sem carregá-lo.</td></tr>
+                <tr><td><span class="verb verb--solid">POST</span></td><td><code>/api/reconhecimento/</code></td><td>Recebe o campo <code>imagem</code> e devolve os símbolos reconhecidos.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 class="subhead">Como os erros chegam ao cliente</h3>
+          <ul class="errors">
+            <li><b>400</b><span><code>ErroValidacaoImagem</code>, <code>ErroProcessamentoImagem</code> — arquivo inválido, corrompido, grande demais ou em formato não aceito.</span></li>
+            <li><b>500</b><span><code>ErroReconhecimento</code> ou falha inesperada — registrada no log, nunca exposta em detalhe.</span></li>
+            <li><b>503</b><span><code>ModeloIAIndisponivel</code> — os pesos ainda não foram treinados ou não puderam ser carregados.</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 · PIPELINE -->
+    <section id="pipeline" class="section">
+      <div class="wrap grid">
+        <header class="section__head">
+          <span class="section__num">03</span>
+          <h2>Pipeline de IA</h2>
+        </header>
+
+        <div class="section__body">
+          <p class="prose big">
+            Da imagem bruta à lista de símbolos em quatro passos. Nenhum deles é mágico —
+            e é justamente isso que torna cada um testável.
+          </p>
+
+          <ol class="steps">
+            <li class="step">
+              <div class="step__num">i.</div>
+              <div class="step__content">
+                <h3>Pré-processamento</h3>
+                <p>A imagem vira escala de cinza. Se o brilho médio for menor que 127, ela é
+                  invertida para manter símbolos escuros sobre fundo claro. O contraste é
+                  reforçado em 1,5×.</p>
+                <figure class="viz viz--pre" aria-hidden="true">
+                  <div class="viz__box viz__box--dark"><span></span><span class="w"></span><span></span></div>
+                  <span class="viz__arrow">→</span>
+                  <div class="viz__box"><span></span><span class="w"></span><span></span></div>
+                </figure>
+                <p class="file">ia/preprocessamento.py — PreprocessadorCodeVision</p>
+              </div>
+            </li>
+
+            <li class="step">
+              <div class="step__num">ii.</div>
+              <div class="step__content">
+                <h3>Segmentação</h3>
+                <p>Limiarização de Otsu produz uma imagem binária; componentes conectados
+                  (vizinhança-8) isolam cada marca. Ruídos muito pequenos e manchas que
+                  ocupam a imagem inteira são descartados. A ordem de leitura é de cima para
+                  baixo, da esquerda para a direita.</p>
+                <figure class="viz viz--seg" aria-hidden="true">
+                  <div class="viz__box viz__box--wide">
+                    <span class="boxed"></span><span class="boxed w"></span><span class="boxed"></span><span class="boxed w"></span>
+                  </div>
+                </figure>
+                <p class="file">cv2.threshold · cv2.connectedComponentsWithStats</p>
+              </div>
+            </li>
+
+            <li class="step">
+              <div class="step__num">iii.</div>
+              <div class="step__content">
+                <h3>Normalização do recorte</h3>
+                <p>Cada componente é recortado com 2 px de margem, redimensionado para
+                  32 × 32 com filtro Lanczos e convertido em um tensor
+                  <code>(1, 32, 32)</code> com valores entre 0 e 1.</p>
+                <figure class="viz viz--grid" aria-hidden="true">
+                  <div class="pixelgrid"></div>
+                  <span class="viz__label">32 × 32 · 1 canal</span>
+                </figure>
+              </div>
+            </li>
+
+            <li class="step">
+              <div class="step__num">iv.</div>
+              <div class="step__content">
+                <h3>Classificação</h3>
+                <p>A CNN devolve uma probabilidade para cada classe. Fundo é descartado;
+                  leituras abaixo de 60% de confiança são marcadas como
+                  <code>baixa_confianca</code> em vez de serem forçadas a virar símbolo.</p>
+                <div class="probs" aria-label="Exemplo de distribuição de probabilidades">
+                  <div class="prob"><span>fundo</span><i style="--v:.02"></i><b>0,02</b></div>
+                  <div class="prob"><span>ponto</span><i style="--v:.95"></i><b>0,95</b></div>
+                  <div class="prob"><span>traço</span><i style="--v:.03"></i><b>0,03</b></div>
+                </div>
+                <p class="file">ia/reconhecimento.py — ReconhecedorCodeVision</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- 04 · MODELO -->
+    <section id="modelo" class="section section--alt">
+      <div class="wrap grid">
+        <header class="section__head">
+          <span class="section__num">04</span>
+          <h2>O modelo</h2>
+        </header>
+
+        <div class="section__body">
+          <p class="prose big">
+            Uma rede pequena de propósito: três blocos convolucionais e um classificador
+            denso. Suficiente para distinguir um ponto de um traço, leve o bastante para
+            rodar em CPU.
+          </p>
+
+          <div class="net">
+            <div class="net__layer"><span class="net__shape">1 × 32 × 32</span><span class="net__name">entrada</span></div>
+            <div class="net__layer"><span class="net__shape">16 × 16 × 16</span><span class="net__name">Conv 3×3 · BatchNorm · ReLU · MaxPool</span></div>
+            <div class="net__layer"><span class="net__shape">32 × 8 × 8</span><span class="net__name">Conv 3×3 · BatchNorm · ReLU · MaxPool</span></div>
+            <div class="net__layer"><span class="net__shape">64 × 4 × 4</span><span class="net__name">Conv 3×3 · BatchNorm · ReLU · MaxPool</span></div>
+            <div class="net__layer"><span class="net__shape">128</span><span class="net__name">Linear · ReLU · Dropout 0,25</span></div>
+            <div class="net__layer net__layer--out"><span class="net__shape">3</span><span class="net__name">fundo · ponto · traço</span></div>
+          </div>
+
+          <div class="cols">
+            <div>
+              <h3 class="subhead">Treinamento</h3>
+              <ul class="list">
+                <li>Dataset organizado em <code>datasets/fundo</code>, <code>/ponto</code> e <code>/traco</code>.</li>
+                <li>Divisão estratificada 80/20, com semente fixa (42) para reprodutibilidade.</li>
+                <li>Adam, taxa de aprendizado 0,001, <i>weight decay</i> 0,0001, entropia cruzada.</li>
+                <li>Avaliação com matriz de confusão, precisão, <i>recall</i> e F1 por classe.</li>
+              </ul>
+            </div>
+            <div>
+              <h3 class="subhead">Persistência</h3>
+              <ul class="list">
+                <li>Pesos salvos em <code>modelos/modelo_morse.pth</code>.</li>
+                <li>Um <code>.json</code> ao lado guarda versão do formato, classes e tamanho de entrada.</li>
+                <li>Ao carregar, os metadados são conferidos antes dos pesos — modelos incompatíveis são recusados.</li>
+                <li>Leitura com <code>weights_only=True</code>, sem desserializar código arbitrário.</li>
+              </ul>
+            </div>
+          </div>
+
+<pre class="code"><code><span class="c"># terminal, a partir da raiz do projeto</span>
+python -m ia.treinamento
+
+<span class="c"># ou, em Python</span>
+from ia.treinamento import TreinadorCodeVision
+TreinadorCodeVision("datasets", "modelos").executar(epocas=20)</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- 05 · DEMONSTRAÇÃO -->
+    <section id="demo" class="section section--dark">
+      <div class="wrap grid">
+        <header class="section__head">
+          <span class="section__num">05</span>
+          <h2>Experimente</h2>
+        </header>
+
+        <div class="section__body">
+          <p class="prose big">
+            Esta área conversa diretamente com o backend local. Envie uma imagem com
+            pontos e traços e veja a resposta exatamente como a API a devolve.
+          </p>
+
+          <div class="console">
+            <div class="console__bar">
+              <span class="status" id="status" data-state="checking">
+                <i></i><span id="status-text">verificando backend…</span>
+              </span>
+              <label class="api-url">
+                <span>API</span>
+                <input id="api-url" type="url" value="http://127.0.0.1:8000" spellcheck="false">
+              </label>
+            </div>
+
+            <div class="console__body">
+              <form id="form" class="drop" novalidate>
+                <input id="file" type="file" name="imagem" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
+                <label for="file" class="drop__zone" id="drop-zone">
+                  <img id="preview" alt="" hidden>
+                  <span class="drop__text" id="drop-text">
+                    Arraste uma imagem aqui<br><small>ou clique para escolher · PNG, JPEG, WEBP, BMP · até 10 MB</small>
+                  </span>
+                </label>
+                <button type="submit" class="btn" id="submit" disabled>Reconhecer símbolos</button>
+              </form>
+
+              <div class="result" id="result" aria-live="polite">
+                <div class="result__empty" id="result-empty">
+                  O resultado aparece aqui: a sequência lida, cada símbolo com sua
+                  confiança e o JSON completo da resposta.
+                </div>
+                <div id="result-content" hidden>
+                  <div class="result__meta" id="result-meta"></div>
+                  <div class="result__seq" id="result-seq"></div>
+                  <ol class="result__symbols" id="result-symbols"></ol>
+                  <details class="result__raw">
+                    <summary>Resposta JSON</summary>
+                    <pre id="result-json"></pre>
+                  </details>
+                </div>
+              </div>
+            </div>
+          </div>
+
+<pre class="code"><code><span class="c"># o mesmo pedido, pela linha de comando</span>
+curl -X POST http://127.0.0.1:8000/api/reconhecimento/ \
+     -F "imagem=@mensagem.png"</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- 06 · ESTADO -->
+    <section id="estado" class="section">
+      <div class="wrap grid">
+        <header class="section__head">
+          <span class="section__num">06</span>
+          <h2>Onde estamos</h2>
+        </header>
+
+        <div class="section__body">
+          <p class="prose big">
+            Um projeto honesto diz o que ainda não faz. A leitura visual está pronta;
+            transformar a sequência em texto é o próximo passo.
+          </p>
+
+          <ul class="roadmap">
+            <li class="done">Estrutura do repositório e controle de versão</li>
+            <li class="done">API de recebimento e validação de imagens</li>
+            <li class="done">Pré-processamento e segmentação por componentes</li>
+            <li class="done">CNN, treinamento, avaliação e persistência</li>
+            <li class="done">Testes automatizados de serializers e serviço</li>
+            <li>Decodificação Morse → texto (<code>mensagem_decodificada</code>)</li>
+            <li>Separação automática entre letras e palavras</li>
+            <li>Codificação: texto → imagem</li>
+            <li>Validação com imagens reais em condições variadas</li>
+          </ul>
+
+          <h3 class="subhead">Limitações conhecidas</h3>
+          <p class="prose">
+            A segmentação por componentes conectados funciona melhor com símbolos escuros,
+            bem separados e sobre fundo claro. Símbolos encostados, perspectiva acentuada e
+            mensagens em várias linhas ainda não são tratados de forma robusta.
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer__inner">
+      <div>
+        <p class="footer__brand">CodeVision</p>
+        <p class="footer__line">Da imagem à informação. Do código à compreensão.</p>
+      </div>
+      <div class="footer__meta">
+        <p>Projeto acadêmico de Matheus Nunes, Pedro Lucas, Bruna Cayre e João Guilherme.</p>
+        <p><a href="https://github.com/Matheus-Nunes223/CodeVision">github.com/Matheus-Nunes223/CodeVision</a></p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
