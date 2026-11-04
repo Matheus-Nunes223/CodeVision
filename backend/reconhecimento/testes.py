@@ -6,16 +6,19 @@ Executar com:
 """
 
 import io
+import tempfile
 import time
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import numpy as np
 from PIL import Image
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
 from rest_framework.exceptions import ValidationError
+from rest_framework.test import APIClient
 
 from reconhecimento.exceptions import (
     ErroProcessamentoImagem,
@@ -27,6 +30,7 @@ from reconhecimento.serializers import (
     ResultadoReconhecimentoSerializer,
 )
 from reconhecimento.services import ServicoReconhecimento
+from ia.modelo import ModeloCodeVision
 
 
 # ============================================================
@@ -449,7 +453,10 @@ class ServicoReconhecimentoTests(SimpleTestCase):
             reconhecedor = self.servico.carregar_modelo()
 
         mock_modelo_classe.return_value.carregar.assert_called_once_with(
-            str(self.servico.caminho_modelo)
+        )
+
+        mock_modelo_classe.assert_called_once_with(
+            caminho_modelo=self.servico.caminho_modelo
         )
 
         mock_reconhecedor_classe.assert_called_once()
@@ -502,6 +509,63 @@ class ServicoReconhecimentoTests(SimpleTestCase):
         reconhecedor_fake.reconhecer_imagem.assert_called_once_with(
             imagem_fake
         )
+
+    def test_preserva_detalhes_e_expoe_apenas_simbolos_reconhecidos(self):
+        """A resposta pública preserva classe, confiança e coordenadas."""
+        imagem_fake = np.zeros((30, 40, 3), dtype=np.uint8)
+        coordenadas = {"x": 4, "y": 8, "largura": 12, "altura": 6}
+        reconhecedor_fake = Mock()
+        reconhecedor_fake.reconhecer_imagem.return_value = {
+            "simbolos": ["·"],
+            "resultados": [
+                {
+                    "indice": 0,
+                    "coordenadas": coordenadas,
+                    "area": 72,
+                    "classe": 1,
+                    "nome_classe": "ponto",
+                    "simbolo": "·",
+                    "confianca": 0.97,
+                    "probabilidades": {
+                        "fundo": 0.01,
+                        "ponto": 0.97,
+                        "traco": 0.02,
+                    },
+                    "status": "reconhecido",
+                },
+                {
+                    "indice": 1,
+                    "coordenadas": {"x": 20, "y": 8, "largura": 2, "altura": 2},
+                    "area": 4,
+                    "classe": 0,
+                    "nome_classe": "fundo",
+                    "simbolo": None,
+                    "confianca": 0.99,
+                    "probabilidades": {
+                        "fundo": 0.99,
+                        "ponto": 0.005,
+                        "traco": 0.005,
+                    },
+                    "status": "fundo",
+                },
+            ],
+        }
+
+        with (
+            patch.object(self.servico, "_abrir_imagem", return_value=imagem_fake),
+            patch.object(self.servico, "carregar_modelo", return_value=reconhecedor_fake),
+        ):
+            resultado = self.servico.reconhecer_imagem(Mock())
+
+        self.assertEqual(resultado["quantidade_simbolos"], 1)
+        self.assertEqual(resultado["simbolos"][0]["classe"], 1)
+        self.assertEqual(resultado["simbolos"][0]["confianca"], 0.97)
+        self.assertEqual(resultado["simbolos"][0]["coordenadas"], coordenadas)
+        self.assertEqual(len(resultado["resultados_detalhados"]), 2)
+
+        serializer = ResultadoReconhecimentoSerializer(data=resultado)
+        self.assertTrue(serializer.is_valid(), msg=str(serializer.errors))
+
 
     def test_propaga_erro_de_carregamento_do_modelo(self):
         """A indisponibilidade do modelo deve ser propagada."""
@@ -557,3 +621,95 @@ class ServicoReconhecimentoTests(SimpleTestCase):
 
 # O Django descobre automaticamente as classes de teste deste arquivo.
 # Não é necessário executar este arquivo diretamente.
+
+
+class PersistenciaModeloTests(SimpleTestCase):
+    """Testa que os pesos exportados podem ser recarregados."""
+
+    def test_salva_e_carrega_pesos_com_metadados_em_caminho_explicito(self):
+        with tempfile.TemporaryDirectory() as diretorio:
+            caminho = Path(diretorio) / "modelo_morse.pth"
+            modelo_original = ModeloCodeVision(dispositivo="cpu")
+            modelo_original.treinado = True
+
+            salvo = modelo_original.salvar(caminho)
+
+            self.assertEqual(salvo, caminho)
+            self.assertTrue(caminho.is_file())
+            self.assertTrue(caminho.with_suffix(".json").is_file())
+
+            modelo_carregado = ModeloCodeVision(dispositivo="cpu")
+            modelo_carregado.carregar(caminho)
+
+            self.assertTrue(modelo_carregado.pronto)
+
+
+class IntegracaoApiReconhecimentoTests(SimpleTestCase):
+    """Verifica o contrato HTTP e a política CORS configurada."""
+
+    @patch("reconhecimento.views.servico_reconhecimento.reconhecer_imagem")
+    def test_post_devolve_detalhes_esperados_pelo_frontend(self, mock_reconhecer):
+        coordenadas = {"x": 2, "y": 3, "largura": 8, "altura": 8}
+        probabilidades = {"fundo": 0.01, "ponto": 0.97, "traco": 0.02}
+        mock_reconhecer.return_value = {
+            "sucesso": True,
+            "mensagem": "Reconhecimento visual concluído.",
+            "texto_reconhecido": "·",
+            "mensagem_decodificada": "",
+            "quantidade_simbolos": 1,
+            "simbolos": [{
+                "simbolo": "·",
+                "classe": 1,
+                "nome_classe": "ponto",
+                "confianca": 0.97,
+                "probabilidades": probabilidades,
+                "coordenadas": coordenadas,
+            }],
+            "tempo_processamento_ms": 12.3,
+            "dimensoes_imagem": {"largura": 20, "altura": 20},
+            "resultados_detalhados": [{
+                "indice": 0,
+                "coordenadas": coordenadas,
+                "area": 64,
+                "classe": 1,
+                "nome_classe": "ponto",
+                "simbolo": "·",
+                "confianca": 0.97,
+                "probabilidades": probabilidades,
+                "status": "reconhecido",
+            }],
+        }
+        resposta = APIClient().post(
+            "/api/reconhecimento/",
+            {"imagem": criar_arquivo_imagem()},
+            format="multipart",
+        )
+
+        self.assertEqual(resposta.status_code, 200, resposta.content)
+        dados = resposta.json()
+        self.assertEqual(dados["simbolos"][0]["classe"], 1)
+        self.assertEqual(dados["simbolos"][0]["coordenadas"]["x"], 2)
+        self.assertEqual(dados["resultados_detalhados"][0]["status"], "reconhecido")
+
+    @override_settings(
+        CORS_ALLOWED_ORIGINS=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+    )
+    def test_cors_permite_frontend_local_e_rejeita_origem_inesperada(self):
+        client = APIClient()
+        permitida = client.get(
+            "/api/health/",
+            HTTP_ORIGIN="http://127.0.0.1:5173",
+        )
+        rejeitada = client.get(
+            "/api/health/",
+            HTTP_ORIGIN="http://localhost:3000",
+        )
+
+        self.assertEqual(
+            permitida["Access-Control-Allow-Origin"],
+            "http://127.0.0.1:5173",
+        )
+        self.assertNotIn("Access-Control-Allow-Origin", rejeitada)

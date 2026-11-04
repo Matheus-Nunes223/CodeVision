@@ -97,8 +97,8 @@ class ServicoReconhecimento:
                 )
 
             try:
-                modelo = ModeloCodeVision()
-                modelo.carregar(str(self.caminho_modelo))
+                modelo = ModeloCodeVision(caminho_modelo=self.caminho_modelo)
+                modelo.carregar()
 
                 reconhecedor = ReconhecedorCodeVision(
                     modelo=modelo,
@@ -272,10 +272,30 @@ class ServicoReconhecimento:
                     "O reconhecedor retornou um resultado inválido."
                 )
 
-            simbolos = self._normalizar_simbolos(resultado_bruto)
             resultados_detalhados = self._extrair_resultados_detalhados(
                 resultado_bruto
             )
+
+            # A IA retorna strings resumidas em "simbolos" e objetos completos
+            # em "resultados". Usar esses objetos mantém classes, probabilidades,
+            # confiança e coordenadas no contrato público da API.
+            if resultados_detalhados:
+                simbolos = [
+                    {
+                        "simbolo": item["simbolo"],
+                        "classe": item["classe"],
+                        "nome_classe": item["nome_classe"],
+                        "confianca": item["confianca"],
+                        "probabilidades": item["probabilidades"],
+                        "coordenadas": item["coordenadas"],
+                    }
+                    for item in resultados_detalhados
+                    if isinstance(item, dict)
+                    and item.get("status") == "reconhecido"
+                    and item.get("simbolo")
+                ]
+            else:
+                simbolos = self._normalizar_simbolos(resultado_bruto)
 
             texto_reconhecido = self._montar_texto_simbolos(simbolos)
 

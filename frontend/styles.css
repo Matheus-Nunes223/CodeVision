@@ -675,7 +675,7 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
 }
 .result__symbols li {
   display: grid;
-  grid-template-columns: 28px 1fr 56px;
+  grid-template-columns: 28px minmax(28px, 1fr) 56px auto;
   gap: 12px;
   align-items: center;
   padding: 7px 0;
@@ -684,6 +684,7 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
   font-size: 12.5px;
   color: var(--gray-300);
 }
+.result__symbols li > span:last-child { color: var(--gray-500); white-space: nowrap; }
 .result__symbols .bar { height: 4px; background: var(--graphite); position: relative; }
 .result__symbols .bar::after {
   content: "";

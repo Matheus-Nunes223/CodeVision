@@ -93,6 +93,18 @@ class ImagemReconhecimentoSerializer(serializers.Serializer):
 # SERIALIZADOR DE SAÍDA
 # ============================================================
 
+class CoordenadasSimboloSerializer(serializers.Serializer):
+    x = serializers.IntegerField(min_value=0)
+    y = serializers.IntegerField(min_value=0)
+    largura = serializers.IntegerField(min_value=1)
+    altura = serializers.IntegerField(min_value=1)
+
+
+class DimensoesImagemSerializer(serializers.Serializer):
+    largura = serializers.IntegerField(min_value=1)
+    altura = serializers.IntegerField(min_value=1)
+
+
 class SimboloReconhecidoSerializer(serializers.Serializer):
     """
     Representa um símbolo identificado pelo modelo de IA.
@@ -109,6 +121,8 @@ class SimboloReconhecidoSerializer(serializers.Serializer):
         max_value=2,
     )
 
+    nome_classe = serializers.CharField(required=False)
+
     confianca = serializers.FloatField(
         required=True,
         min_value=0.0,
@@ -121,6 +135,24 @@ class SimboloReconhecidoSerializer(serializers.Serializer):
             max_value=1.0,
         ),
         required=False,
+    )
+
+    coordenadas = CoordenadasSimboloSerializer(required=False)
+
+
+class ResultadoDetalhadoSerializer(serializers.Serializer):
+    indice = serializers.IntegerField(min_value=0)
+    coordenadas = CoordenadasSimboloSerializer()
+    area = serializers.IntegerField(min_value=1)
+    classe = serializers.IntegerField(min_value=0, max_value=2)
+    nome_classe = serializers.CharField()
+    simbolo = serializers.CharField(allow_null=True, allow_blank=True)
+    confianca = serializers.FloatField(min_value=0.0, max_value=1.0)
+    probabilidades = serializers.DictField(
+        child=serializers.FloatField(min_value=0.0, max_value=1.0),
+    )
+    status = serializers.ChoiceField(
+        choices=("fundo", "baixa_confianca", "reconhecido"),
     )
 
 
@@ -160,4 +192,10 @@ class ResultadoReconhecimentoSerializer(serializers.Serializer):
     tempo_processamento_ms = serializers.FloatField(
         required=False,
         min_value=0.0,
+    )
+
+    dimensoes_imagem = DimensoesImagemSerializer(required=False)
+    resultados_detalhados = ResultadoDetalhadoSerializer(
+        many=True,
+        required=False,
     )

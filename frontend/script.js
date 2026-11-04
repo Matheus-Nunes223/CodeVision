@@ -154,7 +154,14 @@
       const conf = document.createElement("span");
       conf.textContent = formatarConfianca(s.confianca);
 
-      li.append(sim, bar, conf);
+      const posicao = document.createElement("span");
+      if (s.coordenadas) {
+        const { x, y, largura, altura } = s.coordenadas;
+        posicao.textContent = `x${x} · y${y} · ${largura}×${altura}`;
+        posicao.title = "posição e tamanho na imagem original";
+      }
+
+      li.append(sim, bar, conf, posicao);
       el.symbols.appendChild(li);
     });
 

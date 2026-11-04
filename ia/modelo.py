@@ -608,13 +608,17 @@ class ModeloCodeVision:
             "metricas_por_classe": metricas_por_classe,
         }
 
-    def salvar(self) -> Path:
+    def salvar(self, caminho_modelo: str | Path | None = None) -> Path:
         """Salva os pesos e os metadados do modelo."""
 
         if not self.treinado:
             raise RuntimeError(
                 "Treine ou carregue o modelo antes de salvá-lo."
             )
+
+        if caminho_modelo is not None:
+            self.caminho_modelo = Path(caminho_modelo)
+            self.caminho_metadados = self.caminho_modelo.with_suffix(".json")
 
         self.caminho_modelo.parent.mkdir(
             parents=True,
@@ -647,8 +651,12 @@ class ModeloCodeVision:
 
         return self.caminho_modelo
 
-    def carregar(self) -> None:
+    def carregar(self, caminho_modelo: str | Path | None = None) -> None:
         """Carrega os pesos e verifica os metadados, quando disponíveis."""
+
+        if caminho_modelo is not None:
+            self.caminho_modelo = Path(caminho_modelo)
+            self.caminho_metadados = self.caminho_modelo.with_suffix(".json")
 
         if not self.caminho_modelo.is_file():
             raise FileNotFoundError(

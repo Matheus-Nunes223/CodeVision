@@ -1,7 +1,7 @@
-Django
-djangorestframework
-django-cors-headers
-Pillow
-numpy
-opencv-python
-torchs
+Django>=5.1,<5.2
+djangorestframework>=3.15,<3.16
+django-cors-headers>=4.6,<5
+Pillow>=10.4,<12
+numpy>=1.26,<2
+opencv-python>=4.10,<5
+torch>=2.5,<2.6

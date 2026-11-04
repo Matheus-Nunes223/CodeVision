@@ -276,12 +276,10 @@ REST_FRAMEWORK = {
 # Exemplo:
 # DJANGO_CORS_ALLOWED_ORIGINS=http://localhost:5173
 #
-# Por padrão, autorizamos apenas origens locais comuns
-# durante o desenvolvimento.
+# A interface deve ser servida por HTTP na porta 5173. Abrir o HTML como
+# file:// cria uma origem null e não é compatível com esta política.
 _origins = os.environ.get(
     "DJANGO_CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,"
-    "http://127.0.0.1:3000,"
     "http://localhost:5173,"
     "http://127.0.0.1:5173"
 )

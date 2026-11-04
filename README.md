@@ -227,7 +227,7 @@ cd CodeVision
 No Linux:
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 ```
 
 Ative o ambiente:
@@ -238,17 +238,65 @@ source .venv/bin/activate
 
 ### 4. Instale as dependências
 
-A lista definitiva de dependências será adicionada ao projeto quando o ambiente e os primeiros componentes estiverem configurados.
+Use Python 3.10, 3.11 ou 3.12. As versões de Django, PyTorch, NumPy e OpenCV
+estão limitadas em `backend/requirements.txt` para manter a compatibilidade.
 
-Quando o arquivo `requirements.txt` estiver disponível, utilize:
+Instale as dependências do backend:
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r backend/requirements.txt
 ```
 
-### 5. Execute a aplicação
+### 5. Treine e disponibilize o modelo
 
-As instruções específicas de execução serão adicionadas assim que o backend e a interface estiverem implementados.
+Organize os exemplos individuais de símbolos em três pastas. Inclua pelo menos
+duas imagens em cada classe; um conjunto maior e variado tende a produzir um
+modelo mais útil.
+
+```text
+datasets/
+├── fundo/
+├── ponto/
+└── traco/
+```
+
+Na raiz do repositório, com o ambiente virtual ativado, execute:
+
+```bash
+python -m ia.treinamento
+```
+
+O treinamento salva `modelos/modelo_morse.pth` e o arquivo de metadados
+`modelos/modelo_morse.json`. O backend procura os pesos nesse caminho, relativo
+à raiz do repositório. Mantenha os dois arquivos juntos. O treinamento usa as
+mesmas classes e o mesmo pré-processamento que o carregador e o reconhecedor.
+
+### 6. Execute a aplicação
+
+Em um terminal, inicie o Django:
+
+```bash
+cd backend
+python manage.py migrate
+python manage.py runserver
+```
+
+Em outro terminal, sirva o frontend por HTTP a partir da pasta `frontend`:
+
+```bash
+cd frontend
+python -m http.server 5173
+```
+
+Abra <http://127.0.0.1:5173>. Não abra `index.html` diretamente como `file://`:
+essa origem não é autorizada pelo CORS. Por padrão, o backend permite apenas
+`http://localhost:5173` e `http://127.0.0.1:5173`. Para outra origem local,
+configure `DJANGO_CORS_ALLOWED_ORIGINS` com a origem exata (ou uma lista separada
+por vírgulas), por exemplo `http://localhost:8080`.
+
+Sem dataset e sem pesos treinados, o backend ainda inicia e o endpoint de status
+indica que o modelo não está disponível; o reconhecimento responde HTTP 503 até
+que o arquivo `.pth` seja gerado no local esperado.
 
 ---
 
