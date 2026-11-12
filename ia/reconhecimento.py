@@ -359,7 +359,10 @@ class ReconhecedorCodeVision:
         recorte: np.ndarray,
     ) -> dict[str, Any]:
         """Prepara e classifica um recorte individual."""
-        tensor = self.preprocessador.preparar_simbolo(recorte)
+        # PIL, como no treino: evita a inversão automática de arrays.
+        tensor = self.preprocessador.preparar_simbolo(
+            Image.fromarray(recorte)
+        )
 
         previsao = self.modelo.prever(tensor)
 

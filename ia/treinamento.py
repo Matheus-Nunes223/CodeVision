@@ -199,13 +199,27 @@ class TreinadorCodeVision:
 
         return tensor
 
+    @staticmethod
+    def _origem(caminho: Path) -> str:
+        """
+        Identifica a imagem-fonte de um recorte.
+
+        Os recortes gerados por preparar_datasets.py se chamam
+        '<origem>_<sub>_<letra>_<id>_<indice>.png'. Remover o sufixo
+        '_<indice>' agrupa todos os recortes da mesma imagem.
+        """
+        nome = caminho.stem
+        base, _, sufixo = nome.rpartition("_")
+        return base if base and sufixo.isdigit() else nome
+
     def _preparar_dados(
         self,
         imagens_por_classe: dict[str, list[Path]],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Converte as imagens em tensores e cria seus rótulos."""
+    ) -> tuple[torch.Tensor, torch.Tensor, list[str]]:
+        """Converte as imagens em tensores, rótulos e origens."""
         imagens = []
         rotulos = []
+        origens = []
 
         total = sum(
             len(arquivos)
@@ -224,6 +238,7 @@ class TreinadorCodeVision:
 
                 imagens.append(tensor)
                 rotulos.append(rotulo)
+                origens.append(self._origem(caminho))
 
                 processadas += 1
 
@@ -239,12 +254,13 @@ class TreinadorCodeVision:
             dtype=torch.long,
         )
 
-        return imagens_tensor, rotulos_tensor
+        return imagens_tensor, rotulos_tensor, origens
 
     def _dividir_dados(
         self,
         imagens: torch.Tensor,
         rotulos: torch.Tensor,
+        origens: list[str],
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
@@ -252,42 +268,48 @@ class TreinadorCodeVision:
         torch.Tensor,
     ]:
         """
-        Divide os dados mantendo exemplos de cada classe
-        tanto no treinamento quanto na validação.
+        Divide os dados por imagem-fonte, evitando vazamento.
+
+        Todos os recortes de uma mesma imagem ficam no mesmo
+        conjunto (treinamento ou validação). A validação recebe
+        aproximadamente `proporcao_validacao` das origens.
         """
         gerador = random.Random(self.semente)
+
+        todas_origens = sorted(set(origens))
+        gerador.shuffle(todas_origens)
+
+        quantidade_validacao = max(
+            1,
+            round(len(todas_origens) * self.proporcao_validacao),
+        )
+        quantidade_validacao = min(
+            quantidade_validacao,
+            len(todas_origens) - 1,
+        )
+
+        origens_validacao = set(todas_origens[:quantidade_validacao])
 
         indices_treino = []
         indices_validacao = []
 
+        for indice, origem in enumerate(origens):
+            if origem in origens_validacao:
+                indices_validacao.append(indice)
+            else:
+                indices_treino.append(indice)
+
         for rotulo in CLASSES.values():
-            indices_classe = (
-                torch.where(rotulos == rotulo)[0].tolist()
-            )
-
-            gerador.shuffle(indices_classe)
-
-            quantidade_validacao = max(
-                1,
-                round(
-                    len(indices_classe)
-                    * self.proporcao_validacao
-                ),
-            )
-
-            # Preserva pelo menos um exemplo para treinamento.
-            quantidade_validacao = min(
-                quantidade_validacao,
-                len(indices_classe) - 1,
-            )
-
-            indices_validacao.extend(
-                indices_classe[:quantidade_validacao]
-            )
-
-            indices_treino.extend(
-                indices_classe[quantidade_validacao:]
-            )
+            for nome_conjunto, indices in (
+                ("treinamento", indices_treino),
+                ("validação", indices_validacao),
+            ):
+                if not any(int(rotulos[i]) == rotulo for i in indices):
+                    raise ErroTreinamento(
+                        f"A classe {rotulo} não tem exemplos no "
+                        f"conjunto de {nome_conjunto} após a divisão "
+                        "por origem."
+                    )
 
         gerador.shuffle(indices_treino)
         gerador.shuffle(indices_validacao)
@@ -388,7 +410,7 @@ class TreinadorCodeVision:
         for classe, quantidade in self.quantidade_por_classe.items():
             print(f"  {classe}: {quantidade}")
 
-        imagens, rotulos = self._preparar_dados(
+        imagens, rotulos, origens = self._preparar_dados(
             imagens_por_classe
         )
 
@@ -397,7 +419,7 @@ class TreinadorCodeVision:
             rotulos_treino,
             imagens_validacao,
             rotulos_validacao,
-        ) = self._dividir_dados(imagens, rotulos)
+        ) = self._dividir_dados(imagens, rotulos, origens)
 
         print("\nResumo da divisão:")
         print(f"  Treinamento: {len(rotulos_treino)} imagens")
@@ -410,8 +432,7 @@ class TreinadorCodeVision:
         self.historico = modelo.treinar(
             imagens_treino,
             rotulos_treino,
-            imagens_validacao=imagens_validacao,
-            rotulos_validacao=rotulos_validacao,
+            dados_validacao=(imagens_validacao, rotulos_validacao),
             epocas=epocas,
             tamanho_lote=tamanho_lote,
             taxa_aprendizado=float(taxa_aprendizado),
@@ -455,7 +476,7 @@ def main() -> None:
     )
 
     treinador.executar(
-        epocas=20,
+        epocas=40,
         tamanho_lote=32,
         taxa_aprendizado=0.001,
         peso_decay=0.0001,
