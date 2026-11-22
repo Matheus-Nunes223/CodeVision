@@ -297,7 +297,19 @@ class ServicoReconhecimento:
             else:
                 simbolos = self._normalizar_simbolos(resultado_bruto)
 
-            texto_reconhecido = self._montar_texto_simbolos(simbolos)
+            # O reconhecedor já separa letras ("... ---") e palavras (" / ");
+            # a montagem simples fica como alternativa.
+            morse = resultado_bruto.get("morse")
+            texto_reconhecido = (
+                morse
+                if isinstance(morse, str) and morse
+                else self._montar_texto_simbolos(simbolos)
+            )
+
+            mensagem = resultado_bruto.get("mensagem")
+            mensagem_decodificada = (
+                mensagem if isinstance(mensagem, str) else ""
+            )
 
             tempo_ms = (time.perf_counter() - inicio) * 1000
 
@@ -309,9 +321,7 @@ class ServicoReconhecimento:
                     else "Nenhum símbolo foi reconhecido na imagem."
                 ),
                 "texto_reconhecido": texto_reconhecido,
-                # A decodificação semântica será integrada ao módulo
-                # de códigos quando sua interface estiver definida.
-                "mensagem_decodificada": "",
+                "mensagem_decodificada": mensagem_decodificada,
                 "quantidade_simbolos": len(simbolos),
                 "simbolos": simbolos,
                 "tempo_processamento_ms": round(tempo_ms, 2),

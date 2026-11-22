@@ -219,6 +219,32 @@ class PreprocessadorCodeVision:
                 f"Não foi possível converter o array: {erro}"
             ) from erro
 
+    @staticmethod
+    def _completar_quadrado(imagem: Image.Image) -> Image.Image:
+        """
+        Centraliza o recorte em um quadrado preenchido com a cor do fundo.
+
+        A cor do fundo é a mediana da borda do recorte.
+        """
+        largura, altura = imagem.size
+
+        if largura == altura:
+            return imagem
+
+        pixels = np.asarray(imagem)
+        borda = np.concatenate(
+            [pixels[0, :], pixels[-1, :], pixels[:, 0], pixels[:, -1]]
+        )
+        fundo = int(np.median(borda))
+
+        lado = max(largura, altura)
+        quadrado = Image.new("L", (lado, lado), fundo)
+        quadrado.paste(
+            imagem,
+            ((lado - largura) // 2, (lado - altura) // 2),
+        )
+        return quadrado
+
     def preparar_simbolo(
         self,
         imagem: Union[Image.Image, np.ndarray],
@@ -252,6 +278,10 @@ class PreprocessadorCodeVision:
 
         if self.melhorar_contraste:
             imagem_pil = ImageEnhance.Contrast(imagem_pil).enhance(1.5)
+
+        # Mantém a proporção: o comprimento em relação à espessura é o
+        # que distingue ponto de traço, independentemente da caneta.
+        imagem_pil = self._completar_quadrado(imagem_pil)
 
         imagem_pil = imagem_pil.resize(
             self.tamanho_simbolo,

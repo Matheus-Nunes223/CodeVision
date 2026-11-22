@@ -663,6 +663,20 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
   margin-bottom: 18px;
 }
 
+/* Uma linha da foto por linha da tela. */
+.result__texto {
+  white-space: pre-line;
+  word-break: normal;
+}
+
+.result__morse {
+  white-space: pre-line;
+  font-size: 15px;
+  letter-spacing: .1em;
+  color: var(--gray-300);
+  margin-top: 10px;
+}
+
 .result__msg { color: var(--gray-300); }
 .result__msg--error { color: var(--white); border-left: 2px solid var(--white); padding-left: 12px; }
 

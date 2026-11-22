@@ -131,7 +131,17 @@
       adicionarMeta(`${dados.tempo_processamento_ms.toFixed(1)} ms`);
     }
 
-    if (dados.texto_reconhecido) {
+    if (dados.mensagem_decodificada) {
+      const texto = document.createElement("div");
+      texto.className = "result__texto";
+      texto.textContent = dados.mensagem_decodificada;
+
+      const morse = document.createElement("div");
+      morse.className = "result__morse";
+      morse.textContent = dados.texto_reconhecido || "";
+
+      el.seq.append(texto, morse);
+    } else if (dados.texto_reconhecido) {
       el.seq.textContent = dados.texto_reconhecido;
     } else {
       const p = document.createElement("p");

@@ -305,8 +305,9 @@ class ModeloCodeVision:
         Aumento de dados leve para um lote (N, 1, 32, 32).
 
         Aplica rotação (±8°), escala (0,9 a 1,1), translação (±8%),
-        variação de contraste/brilho e ruído gaussiano. Não faz
-        espelhamento. O fundo é replicado nas bordas.
+        redução de resolução (metade do lote), variação de
+        contraste/brilho e ruído gaussiano. Não faz espelhamento.
+        O fundo é replicado nas bordas.
         """
         n = imagens.size(0)
         dispositivo = imagens.device
@@ -335,8 +336,22 @@ class ModeloCodeVision:
             align_corners=False,
         )
 
-        contraste = (0.8 + 0.4 * torch.rand(n, 1, 1, 1, device=dispositivo))
-        brilho = (torch.rand(n, 1, 1, 1, device=dispositivo) - 0.5) * 0.2
+        # Baixa resolução: metade do lote é reduzida a 5-16 px e ampliada
+        # de volta, como um símbolo pequeno em foto de celular comprimida.
+        reduzir = torch.rand(n, device=dispositivo) < 0.5
+        if reduzir.any():
+            lado = int(torch.randint(5, 17, (1,)).item())
+            pequenas = F.interpolate(saida[reduzir], size=(lado, lado), mode="area")
+            saida[reduzir] = F.interpolate(
+                pequenas,
+                size=imagens.shape[-2:],
+                mode="bilinear",
+                align_corners=False,
+            )
+
+        # Contraste e cor do fundo variam bastante entre papéis e luzes.
+        contraste = (0.4 + 0.8 * torch.rand(n, 1, 1, 1, device=dispositivo))
+        brilho = (torch.rand(n, 1, 1, 1, device=dispositivo) - 0.5) * 0.4
         saida = (saida - 0.5) * contraste + 0.5 + brilho
 
         saida = saida + 0.02 * torch.randn_like(saida)

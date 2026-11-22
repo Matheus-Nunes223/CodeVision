@@ -7,13 +7,13 @@ Responsabilidades:
 - Preparar os recortes com PreprocessadorCodeVision.
 - Classificar os recortes usando ModeloCodeVision.
 - Preservar coordenadas, ordem e confiança das classificações.
-
-Este módulo não decodifica a mensagem Morse em texto.
-A decodificação será responsabilidade de decodificacao.py.
+- Decodificar cada linha de texto em letras e palavras.
 
 Dependências do projeto:
 - ia/modelo.py
 - ia/preprocessamento.py
+- ia/segmentacao.py
+- ia/decodificacao.py
 
 Dependências externas:
 - opencv-python
@@ -30,8 +30,16 @@ import numpy as np
 import torch
 from PIL import Image
 
+from ia.decodificacao import SimboloPosicionado, decodificar_linha
 from ia.modelo import ModeloCodeVision
 from ia.preprocessamento import PreprocessadorCodeVision
+from ia.segmentacao import (
+    Componente,
+    ResultadoSegmentacao,
+    alongamento,
+    recorte_isolado,
+    segmentar,
+)
 
 
 CaminhoImagem = Union[str, Path]
@@ -42,6 +50,11 @@ CLASSES = {
     2: "traco",
 }
 
+# Alongamento (comprimento ÷ espessura) a partir do qual o formato é
+# inequívoco. Entre os dois limites, vale a decisão da CNN.
+ALONGAMENTO_PONTO = 1.5
+ALONGAMENTO_TRACO = 2.5
+
 
 class ErroReconhecimento(Exception):
     """Erro específico durante o reconhecimento visual."""
@@ -51,10 +64,10 @@ class ReconhecedorCodeVision:
     """
     Localiza e classifica possíveis símbolos Morse em imagens.
 
-    Observação:
-        A segmentação implementada é baseada em componentes conectados.
-        Ela funciona melhor com símbolos escuros, bem separados e sobre
-        um fundo claro. Não é um detector universal de Morse.
+    A segmentação (ia/segmentacao.py) trata fotos reais: corrige
+    iluminação e inclinação, ignora o que está fora do papel e remove
+    as pautas do caderno. A CNN decide ponto, traço ou fundo, e a
+    decodificação separa letras e palavras pelos espaços e barras "/".
     """
 
     def __init__(
@@ -62,9 +75,6 @@ class ReconhecedorCodeVision:
         modelo: ModeloCodeVision,
         preprocessador: Optional[PreprocessadorCodeVision] = None,
         confianca_minima: float = 0.60,
-        area_minima: int = 3,
-        area_maxima: Optional[int] = None,
-        limiar_binario: int = 0,
     ):
         """
         Args:
@@ -72,11 +82,6 @@ class ReconhecedorCodeVision:
             preprocessador: instância do preprocessador. Se omitida,
                 uma instância padrão será criada.
             confianca_minima: confiança mínima para aceitar uma previsão.
-            area_minima: área mínima, em pixels, de um componente.
-            area_maxima: área máxima permitida para um componente.
-                None significa sem limite superior explícito.
-            limiar_binario: 0 utiliza limiarização automática de Otsu.
-                Valores entre 1 e 254 usam um limiar fixo.
         """
         if not isinstance(modelo, ModeloCodeVision):
             raise TypeError(
@@ -91,41 +96,11 @@ class ReconhecedorCodeVision:
                 "confianca_minima deve estar entre 0 e 1."
             )
 
-        if (
-            not isinstance(area_minima, int)
-            or isinstance(area_minima, bool)
-            or area_minima < 1
-        ):
-            raise ValueError("area_minima deve ser um inteiro positivo.")
-
-        if area_maxima is not None:
-            if (
-                not isinstance(area_maxima, int)
-                or isinstance(area_maxima, bool)
-                or area_maxima < area_minima
-            ):
-                raise ValueError(
-                    "area_maxima deve ser None ou um inteiro "
-                    "maior ou igual a area_minima."
-                )
-
-        if (
-            not isinstance(limiar_binario, int)
-            or isinstance(limiar_binario, bool)
-            or not 0 <= limiar_binario <= 254
-        ):
-            raise ValueError(
-                "limiar_binario deve ser um inteiro entre 0 e 254."
-            )
-
         self.modelo = modelo
         self.preprocessador = (
             preprocessador or PreprocessadorCodeVision()
         )
         self.confianca_minima = float(confianca_minima)
-        self.area_minima = area_minima
-        self.area_maxima = area_maxima
-        self.limiar_binario = limiar_binario
 
     @staticmethod
     def _carregar_imagem(caminho: CaminhoImagem) -> Image.Image:
@@ -239,120 +214,82 @@ class ReconhecedorCodeVision:
 
         return np.ascontiguousarray(array, dtype=np.uint8)
 
-    def _binarizar(self, imagem_cinza: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def _conferir_formato(
+        classificacao: dict[str, Any],
+        razao: float,
+    ) -> dict[str, Any]:
         """
-        Produz uma imagem binária com símbolos brancos sobre fundo preto.
+        Confere ponto/traço da CNN com o alongamento do símbolo.
 
-        Otsu é usado por padrão. A limiarização fixa pode ser selecionada
-        explicitamente por limiar_binario.
+        Em símbolos muito pequenos (fotos de longe ou comprimidas) a CNN
+        pode confundir ponto e traço. Quando o formato é inequívoco, ele
+        prevalece; a correção fica registrada em "corrigido_por_formato".
+        O fundo continua sendo decidido só pela CNN.
         """
-        if self.limiar_binario == 0:
-            _, binaria = cv2.threshold(
-                imagem_cinza,
-                0,
-                255,
-                cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU,
-            )
+        resultado = {
+            **classificacao,
+            "alongamento": round(float(razao), 2),
+            "corrigido_por_formato": False,
+        }
+
+        if classificacao["classe"] == 0:
+            return resultado
+
+        if razao >= ALONGAMENTO_TRACO:
+            classe = 2
+        elif razao <= ALONGAMENTO_PONTO:
+            classe = 1
         else:
-            _, binaria = cv2.threshold(
-                imagem_cinza,
-                self.limiar_binario,
-                255,
-                cv2.THRESH_BINARY_INV,
+            return resultado
+
+        if classe != classificacao["classe"]:
+            resultado.update(
+                classe=classe,
+                nome_classe=CLASSES[classe],
+                corrigido_por_formato=True,
             )
+            if resultado["status"] == "reconhecido":
+                resultado["simbolo"] = "·" if classe == 1 else "−"
 
-        return binaria
-
-    def _localizar_componentes(
-        self,
-        imagem_cinza: np.ndarray,
-    ) -> list[dict[str, int]]:
-        """
-        Localiza componentes conectados potencialmente correspondentes
-        a pontos e traços.
-
-        Cada componente contém x, y, largura, altura e área.
-        As coordenadas têm origem no canto superior esquerdo.
-        """
-        binaria = self._binarizar(imagem_cinza)
-
-        numero, rotulos, estatisticas, _ = (
-            cv2.connectedComponentsWithStats(
-                binaria,
-                connectivity=8,
-            )
-        )
-
-        componentes = []
-
-        for indice in range(1, numero):
-            x, y, largura, altura, area = (
-                int(valor)
-                for valor in estatisticas[indice]
-            )
-
-            if area < self.area_minima:
-                continue
-
-            if (
-                self.area_maxima is not None
-                and area > self.area_maxima
-            ):
-                continue
-
-            # Evita considerar um componente que ocupe praticamente
-            # toda a imagem como um símbolo individual.
-            if (
-                largura >= imagem_cinza.shape[1] * 0.98
-                and altura >= imagem_cinza.shape[0] * 0.98
-            ):
-                continue
-
-            componentes.append(
-                {
-                    "x": x,
-                    "y": y,
-                    "largura": largura,
-                    "altura": altura,
-                    "area": area,
-                }
-            )
-
-        # Ordenação inicial: de cima para baixo e, na mesma linha,
-        # da esquerda para a direita.
-        componentes.sort(key=lambda c: (c["y"], c["x"]))
-
-        return componentes
+        return resultado
 
     @staticmethod
-    def _recortar_com_margem(
-        imagem_cinza: np.ndarray,
-        componente: dict[str, int],
-        margem: int = 2,
-    ) -> np.ndarray:
-        """Extrai um componente com uma pequena margem ao redor."""
-        altura_imagem, largura_imagem = imagem_cinza.shape
-
-        x1 = max(0, componente["x"] - margem)
-        y1 = max(0, componente["y"] - margem)
-
-        x2 = min(
-            largura_imagem,
-            componente["x"] + componente["largura"] + margem,
+    def _coordenadas_originais(
+        componente: Componente,
+        segmentacao: ResultadoSegmentacao,
+    ) -> dict[str, int]:
+        """
+        Converte a caixa da imagem de trabalho (reduzida e endireitada)
+        para a imagem original enviada.
+        """
+        altura, largura = segmentacao.imagem.shape
+        matriz = cv2.getRotationMatrix2D(
+            (largura / 2, altura / 2), segmentacao.angulo, 1.0
         )
-        y2 = min(
-            altura_imagem,
-            componente["y"] + componente["altura"] + margem,
+        inversa = cv2.invertAffineTransform(matriz)
+
+        cantos = np.array(
+            [
+                [componente.x, componente.y],
+                [componente.direita, componente.y],
+                [componente.x, componente.y + componente.altura],
+                [componente.direita, componente.y + componente.altura],
+            ],
+            dtype=np.float64,
         )
+        originais = cantos @ inversa[:, :2].T + inversa[:, 2]
+        originais /= segmentacao.escala
 
-        recorte = imagem_cinza[y1:y2, x1:x2]
+        x_min, y_min = np.floor(originais.min(axis=0)).astype(int)
+        x_max, y_max = np.ceil(originais.max(axis=0)).astype(int)
 
-        if recorte.size == 0:
-            raise ErroReconhecimento(
-                "Foi encontrado um componente sem pixels válidos."
-            )
-
-        return recorte
+        return {
+            "x": int(max(0, x_min)),
+            "y": int(max(0, y_min)),
+            "largura": int(x_max - x_min),
+            "altura": int(y_max - y_min),
+        }
 
     def _classificar_recorte(
         self,
@@ -433,46 +370,83 @@ class ReconhecedorCodeVision:
         imagem: Union[Image.Image, np.ndarray],
     ) -> dict[str, Any]:
         """
-        Localiza e classifica possíveis símbolos em uma imagem completa.
+        Localiza, classifica e decodifica os símbolos de uma imagem.
 
         Args:
-            imagem: imagem PIL ou array NumPy.
+            imagem: imagem PIL ou array NumPy (RGB ou cinza).
 
         Returns:
-            Dicionário com dimensões, quantidade de componentes,
-            resultados individuais e possíveis símbolos reconhecidos.
+            Dicionário com os resultados de cada símbolo, as linhas de
+            texto encontradas (Morse e texto decodificado) e a mensagem
+            completa, uma linha de texto por linha da imagem.
 
-        Limitação:
-            A segmentação por componentes conectados não resolve
-            automaticamente símbolos encostados, ruídos complexos,
-            perspectivas extremas ou organização de várias linhas.
+        Observação:
+            Na decodificação, um símbolo abaixo da confiança mínima entra
+            com a classe mais provável (ponto ou traço) e fica marcado
+            como "baixa_confianca" nos resultados.
         """
         imagem_cinza = self._obter_imagem_cinza(imagem)
-        componentes = self._localizar_componentes(imagem_cinza)
+        segmentacao = segmentar(imagem_cinza)
 
         resultados = []
+        linhas = []
 
-        for indice, componente in enumerate(componentes):
-            recorte = self._recortar_com_margem(
-                imagem_cinza,
-                componente,
+        for numero_linha, componentes in enumerate(segmentacao.linhas):
+            posicionados = []
+
+            for componente in componentes:
+                coordenadas = self._coordenadas_originais(
+                    componente, segmentacao
+                )
+
+                if componente.barra:
+                    classificacao = {
+                        "classe": None,
+                        "nome_classe": "separador",
+                        "simbolo": "/",
+                        "confianca": None,
+                        "probabilidades": {},
+                        "status": "separador",
+                    }
+                    posicionados.append(
+                        SimboloPosicionado(
+                            "/", componente.x, componente.largura
+                        )
+                    )
+                else:
+                    classificacao = self._classificar_recorte(
+                        recorte_isolado(segmentacao, componente)
+                    )
+                    classificacao = self._conferir_formato(
+                        classificacao,
+                        alongamento(segmentacao, componente),
+                    )
+                    if classificacao["classe"] != 0:
+                        posicionados.append(
+                            SimboloPosicionado(
+                                "." if classificacao["classe"] == 1 else "-",
+                                componente.x,
+                                componente.largura,
+                            )
+                        )
+
+                resultados.append(
+                    {
+                        "indice": len(resultados),
+                        "linha": numero_linha,
+                        "coordenadas": coordenadas,
+                        "area": int(componente.area / segmentacao.escala**2),
+                        **classificacao,
+                    }
+                )
+
+            if sum(1 for s in posicionados if s.simbolo != "/") == 0:
+                continue
+
+            decodificada = decodificar_linha(
+                posicionados, segmentacao.espessura
             )
-
-            classificacao = self._classificar_recorte(recorte)
-
-            resultados.append(
-                {
-                    "indice": indice,
-                    "coordenadas": {
-                        "x": componente["x"],
-                        "y": componente["y"],
-                        "largura": componente["largura"],
-                        "altura": componente["altura"],
-                    },
-                    "area": componente["area"],
-                    **classificacao,
-                }
-            )
+            linhas.append({"linha": numero_linha, **decodificada})
 
         simbolos_reconhecidos = [
             resultado["simbolo"]
@@ -485,15 +459,14 @@ class ReconhecedorCodeVision:
                 "largura": int(imagem_cinza.shape[1]),
                 "altura": int(imagem_cinza.shape[0]),
             },
-            "quantidade_componentes": len(componentes),
+            "quantidade_componentes": len(resultados),
             "quantidade_reconhecidos": len(simbolos_reconhecidos),
             "simbolos": simbolos_reconhecidos,
             "resultados": resultados,
-            "observacao": (
-                "Os símbolos estão ordenados inicialmente por posição "
-                "vertical e horizontal. A separação de letras e palavras "
-                "ainda deve ser feita pelo módulo de decodificação."
-            ),
+            "linhas": linhas,
+            "morse": "\n".join(linha["morse"] for linha in linhas),
+            "mensagem": "\n".join(linha["texto"] for linha in linhas),
+            "inclinacao_graus": round(segmentacao.angulo, 2),
         }
 
     def reconhecer_arquivo(
