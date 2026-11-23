@@ -2,423 +2,802 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CodeVision — o código por trás da imagem</title>
-  <meta name="description" content="CodeVision: reconhecimento de código Morse em imagens com Django REST Framework e uma CNN em PyTorch.">
-  <link rel="stylesheet" href="styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodeVision · Experimente</title>
+  <style>
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f8f9fb;
+  --border: #e2e5ea;
+  --border-strong: #cdd2da;
+  --text: #151a23;
+  --muted: #5d6675;
+  --accent: #2456d6;
+  --accent-hover: #1c46b3;
+  --accent-soft: #e9efff;
+  --ok: #167a4a;
+  --warn: #a15c07;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+}
+ 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1218;
+    --surface: #171b23;
+    --surface-2: #1d222c;
+    --border: #2a303b;
+    --border-strong: #3a4250;
+    --text: #e8ebf0;
+    --muted: #98a1b0;
+    --accent: #6c93ff;
+    --accent-hover: #86a6ff;
+    --accent-soft: #1d2a4d;
+    --ok: #4cc38a;
+    --warn: #e0a24a;
+    --danger: #ff7b6f;
+    --danger-soft: #3a1c1a;
+  }
+}
+ 
+*, *::before, *::after { box-sizing: border-box; }
+ 
+html { -webkit-text-size-adjust: 100%; }
+ 
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+}
+ 
+.page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 56px 24px 72px;
+}
+ 
+.intro h1 {
+  margin: 0 0 8px;
+  font-size: 30px;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+ 
+.intro p {
+  margin: 0 0 28px;
+  max-width: 56ch;
+  color: var(--muted);
+  font-size: 17px;
+}
+ 
+/* ---------- painel ---------- */
+ 
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.04);
+  overflow: hidden;
+}
+ 
+.panel-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+ 
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--muted);
+}
+ 
+.status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+ 
+.status[data-state="online"] { color: var(--ok); }
+.status[data-state="online"] .dot { background: var(--ok); }
+.status[data-state="no-model"] { color: var(--warn); }
+.status[data-state="no-model"] .dot { background: var(--warn); }
+.status[data-state="offline"] { color: var(--danger); }
+.status[data-state="offline"] .dot { background: var(--danger); }
+.status[data-state="checking"] .dot { animation: pulse 1.2s ease-in-out infinite; }
+ 
+@keyframes pulse { 50% { opacity: 0.3; } }
+ 
+.api-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+ 
+.api-field input {
+  width: 240px;
+  max-width: 100%;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: 13px var(--mono);
+}
+ 
+.panel-body {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) 1fr;
+}
+ 
+.col { padding: 20px; }
+.col-output { border-left: 1px solid var(--border); min-width: 0; }
+ 
+/* ---------- upload ---------- */
+ 
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 16px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+ 
+.dropzone:hover,
+.dropzone.is-over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+ 
+.dz-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.dz-empty strong { font-weight: 600; }
+.dz-empty span { color: var(--muted); font-size: 14px; }
+.dz-empty small { margin-top: 8px; color: var(--muted); font-size: 12px; }
+.dz-icon { color: var(--accent); margin-bottom: 6px; }
+ 
+.dz-preview { width: 100%; }
+.dz-preview img {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.dz-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  text-align: left;
+}
+.dz-file span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+ 
+.link-btn {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.link-btn:hover { text-decoration: underline; }
+ 
+.primary {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.primary:hover:not(:disabled) { background: var(--accent-hover); }
+.primary:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+ 
+/* ---------- resultado ---------- */
+ 
+.placeholder {
+  display: flex;
+  align-items: center;
+  min-height: 200px;
+  max-width: 44ch;
+  color: var(--muted);
+}
+ 
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 200px;
+  color: var(--muted);
+}
+ 
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+ 
+.error {
+  padding: 14px 16px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 14px;
+}
+ 
+.result { display: grid; gap: 18px; }
+ 
+.result h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+ 
+.sequence {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font: 600 22px/1.4 var(--mono);
+  letter-spacing: 0.12em;
+  word-break: break-all;
+}
+ 
+.decoded { margin: 10px 0 0; font-size: 16px; }
+ 
+.symbols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+ 
+.symbols li {
+  min-width: 78px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-align: center;
+}
+.symbols .sym { display: block; font: 600 18px/1.2 var(--mono); }
+.symbols .pct { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+.symbols .bar {
+  display: block;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.symbols .bar i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.symbols li[data-low="true"] .bar i { background: var(--warn); }
+ 
+.raw summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+ 
+pre {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font: 12.5px/1.6 var(--mono);
+}
+.raw pre { margin-top: 8px; max-height: 280px; overflow: auto; }
+ 
+/* ---------- curl ---------- */
+ 
+.cli { margin-top: 28px; }
+.cli p { margin: 0 0 8px; font-size: 14px; color: var(--muted); }
+ 
+/* ---------- foco e responsivo ---------- */
+ 
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+ 
+@media (max-width: 720px) {
+  .page { padding: 32px 16px 48px; }
+  .panel-body { grid-template-columns: 1fr; }
+  .col-output { border-left: 0; border-top: 1px solid var(--border); }
+  .api-field { width: 100%; }
+  .api-field input { flex: 1; width: auto; }
+  .sequence { font-size: 18px; }
+}
+ 
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+ 
+</style>
 </head>
 <body>
-
-  <header class="hero">
-    <div class="wrap">
-      <p class="eyebrow">Projeto acadêmico · Visão computacional</p>
-      <h1 class="hero__title">
-        CodeVision
-        <span class="hero__subtitle">o código por trás da imagem.</span>
-      </h1>
-
-      <div class="morse" aria-hidden="true">
-        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-        <span class="gap"></span>
-        <span class="dash"></span><span class="dash"></span><span class="dash"></span>
-        <span class="gap"></span>
-        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-      </div>
-
-      <p class="lead">
-        Uma imagem com pontos e traços entra por uma API; uma rede neural
-        convolucional identifica cada símbolo, um a um, e devolve o que encontrou
-        com a posição, a classe e o grau de certeza de cada leitura.
-      </p>
-
-      <dl class="facts">
-        <div><dt>Backend</dt><dd>Django + DRF</dd></div>
-        <div><dt>Modelo</dt><dd>CNN em PyTorch</dd></div>
-        <div><dt>Segmentação</dt><dd>OpenCV</dd></div>
-        <div><dt>Classes</dt><dd>fundo · ponto · traço</dd></div>
-      </dl>
-
-      <a class="scroll-hint" href="#proposito">Ler a partir do começo ↓</a>
-    </div>
-  </header>
-
-  <main>
-
-    <!-- 01 · PROPÓSITO -->
-    <section id="proposito" class="section">
-      <div class="wrap grid">
-        <header class="section__head">
-          <span class="section__num">01</span>
-          <h2>Propósito</h2>
-        </header>
-
-        <div class="section__body prose">
-          <p class="big">
-            Ensinar uma máquina a <em>ler</em> uma mensagem codificada do mesmo jeito
-            que uma pessoa faria: olhando para a imagem, separando cada marca e
-            decidindo se ela é um ponto ou um traço.
-          </p>
-          <p>
-            O CodeVision nasceu como projeto de Engenharia de Software para unir três
-            áreas que raramente aparecem juntas em trabalhos de graduação: processamento
-            digital de imagens, aprendizado de máquina e desenvolvimento web. O primeiro
-            sistema de codificação suportado é o código Morse — simples o bastante para
-            ser verificado à mão, rico o bastante para exigir decisões reais de engenharia.
-          </p>
-          <p>
-            O princípio que guia a arquitetura é a separação de responsabilidades:
-            <strong>reconhecer</strong> o que há na imagem é um problema; <strong>interpretar</strong>
-            o que isso significa é outro. Cada um vive no seu próprio módulo e pode ser
-            testado de forma independente.
-          </p>
-
-          <ul class="pillars">
-            <li>
-              <h3>Ver</h3>
-              <p>Receber, validar e preparar a imagem enviada pelo usuário.</p>
-            </li>
-            <li>
-              <h3>Reconhecer</h3>
-              <p>Localizar cada marca e classificá-la com uma rede neural.</p>
-            </li>
-            <li>
-              <h3>Explicar</h3>
-              <p>Devolver posição, classe e confiança de cada símbolo — nada escondido.</p>
-            </li>
-          </ul>
+  <main class="page">
+    <header class="intro">
+      <h1>Experimente</h1>
+      <p>Envie uma imagem com pontos e traços e veja a resposta exatamente como a API a devolve.</p>
+    </header>
+ 
+    <section class="panel" aria-label="Reconhecimento de símbolos">
+      <div class="panel-bar">
+        <div class="status" id="status" data-state="checking" role="status" aria-live="polite">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="status-text">Verificando o backend…</span>
         </div>
+        <label class="api-field">
+          <span>API</span>
+          <input id="api-url" type="url" value="http://127.0.0.1:8000" spellcheck="false" autocomplete="off">
+        </label>
       </div>
-    </section>
-
-    <!-- 02 · ARQUITETURA -->
-    <section id="arquitetura" class="section section--dark">
-      <div class="wrap grid">
-        <header class="section__head">
-          <span class="section__num">02</span>
-          <h2>Arquitetura</h2>
-        </header>
-
-        <div class="section__body">
-          <p class="prose big">
-            Um backend Django REST fino na borda, uma camada de serviços no meio e
-            o módulo de IA isolado no fundo. Cada camada só conhece a de baixo.
-          </p>
-
-          <ol class="layers">
-            <li class="layer">
-              <div class="layer__tag">Borda HTTP</div>
-              <div class="layer__main">
-                <h3>views.py</h3>
-                <p>Recebe o <code>multipart/form-data</code>, aciona as validações, chama o
-                  serviço e traduz cada exceção de domínio em um status HTTP coerente.</p>
-              </div>
-              <div class="layer__files">urls.py · views.py</div>
-            </li>
-            <li class="layer">
-              <div class="layer__tag">Contrato</div>
-              <div class="layer__main">
-                <h3>serializers.py + validators.py</h3>
-                <p>Validação em duas etapas: o serializer confere o campo <code>imagem</code>;
-                  os validadores reabrem o arquivo com Pillow para checar formato real,
-                  dimensões e integridade — sem confiar na extensão enviada.</p>
-              </div>
-              <div class="layer__files">PNG · JPEG · WEBP · BMP · ≤ 10 MB · ≤ 10 000 px</div>
-            </li>
-            <li class="layer">
-              <div class="layer__tag">Serviço</div>
-              <div class="layer__main">
-                <h3>ServicoReconhecimento</h3>
-                <p>Carrega o modelo sob demanda, uma única vez por processo, protegido por
-                  <code>threading.Lock</code>. Corrige a orientação EXIF, converte para RGB,
-                  delega à IA e normaliza o resultado para o contrato da API.</p>
-              </div>
-              <div class="layer__files">services.py · exceptions.py</div>
-            </li>
-            <li class="layer">
-              <div class="layer__tag">Inteligência</div>
-              <div class="layer__main">
-                <h3>Pacote ia/</h3>
-                <p>Independente do Django. Pré-processamento, segmentação, a CNN e o
-                  treinamento podem ser usados direto no terminal ou em um notebook.</p>
-              </div>
-              <div class="layer__files">preprocessamento · reconhecimento · modelo · treinamento</div>
-            </li>
-          </ol>
-
-          <h3 class="subhead">Endpoints</h3>
-          <div class="table-wrap">
-            <table class="table">
-              <thead>
-                <tr><th>Método</th><th>Rota</th><th>Função</th></tr>
-              </thead>
-              <tbody>
-                <tr><td><span class="verb">GET</span></td><td><code>/api/health/</code></td><td>Confirma que o backend está no ar.</td></tr>
-                <tr><td><span class="verb">GET</span></td><td><code>/api/reconhecimento/status/</code></td><td>Informa se o arquivo do modelo existe e se já está carregado em memória — sem carregá-lo.</td></tr>
-                <tr><td><span class="verb verb--solid">POST</span></td><td><code>/api/reconhecimento/</code></td><td>Recebe o campo <code>imagem</code> e devolve os símbolos reconhecidos.</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <h3 class="subhead">Como os erros chegam ao cliente</h3>
-          <ul class="errors">
-            <li><b>400</b><span><code>ErroValidacaoImagem</code>, <code>ErroProcessamentoImagem</code> — arquivo inválido, corrompido, grande demais ou em formato não aceito.</span></li>
-            <li><b>500</b><span><code>ErroReconhecimento</code> ou falha inesperada — registrada no log, nunca exposta em detalhe.</span></li>
-            <li><b>503</b><span><code>ModeloIAIndisponivel</code> — os pesos ainda não foram treinados ou não puderam ser carregados.</span></li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <!-- 03 · PIPELINE -->
-    <section id="pipeline" class="section">
-      <div class="wrap grid">
-        <header class="section__head">
-          <span class="section__num">03</span>
-          <h2>Pipeline de IA</h2>
-        </header>
-
-        <div class="section__body">
-          <p class="prose big">
-            Da imagem bruta à lista de símbolos em quatro passos. Nenhum deles é mágico
-            e é justamente isso que torna cada um testável.
-          </p>
-
-          <ol class="steps">
-            <li class="step">
-              <div class="step__num">i.</div>
-              <div class="step__content">
-                <h3>Pré-processamento</h3>
-                <p>A imagem vira escala de cinza. Se o brilho médio for menor que 127, ela é
-                  invertida para manter símbolos escuros sobre fundo claro. O contraste é
-                  reforçado em 1,5×.</p>
-                <figure class="viz viz--pre" aria-hidden="true">
-                  <div class="viz__box viz__box--dark"><span></span><span class="w"></span><span></span></div>
-                  <span class="viz__arrow">→</span>
-                  <div class="viz__box"><span></span><span class="w"></span><span></span></div>
-                </figure>
-                <p class="file">ia/preprocessamento.py — PreprocessadorCodeVision</p>
-              </div>
-            </li>
-
-            <li class="step">
-              <div class="step__num">ii.</div>
-              <div class="step__content">
-                <h3>Segmentação</h3>
-                <p>Limiarização de Otsu produz uma imagem binária; componentes conectados
-                  (vizinhança-8) isolam cada marca. Ruídos muito pequenos e manchas que
-                  ocupam a imagem inteira são descartados. A ordem de leitura é de cima para
-                  baixo, da esquerda para a direita.</p>
-                <figure class="viz viz--seg" aria-hidden="true">
-                  <div class="viz__box viz__box--wide">
-                    <span class="boxed"></span><span class="boxed w"></span><span class="boxed"></span><span class="boxed w"></span>
-                  </div>
-                </figure>
-                <p class="file">cv2.threshold · cv2.connectedComponentsWithStats</p>
-              </div>
-            </li>
-
-            <li class="step">
-              <div class="step__num">iii.</div>
-              <div class="step__content">
-                <h3>Normalização do recorte</h3>
-                <p>Cada componente é recortado com 2 px de margem, redimensionado para
-                  32 × 32 com filtro Lanczos e convertido em um tensor
-                  <code>(1, 32, 32)</code> com valores entre 0 e 1.</p>
-                <figure class="viz viz--grid" aria-hidden="true">
-                  <div class="pixelgrid"></div>
-                  <span class="viz__label">32 × 32 · 1 canal</span>
-                </figure>
-              </div>
-            </li>
-
-            <li class="step">
-              <div class="step__num">iv.</div>
-              <div class="step__content">
-                <h3>Classificação</h3>
-                <p>A CNN devolve uma probabilidade para cada classe. Fundo é descartado;
-                  leituras abaixo de 60% de confiança são marcadas como
-                  <code>baixa_confianca</code> em vez de serem forçadas a virar símbolo.</p>
-                <div class="probs" aria-label="Exemplo de distribuição de probabilidades">
-                  <div class="prob"><span>fundo</span><i style="--v:.02"></i><b>0,02</b></div>
-                  <div class="prob"><span>ponto</span><i style="--v:.95"></i><b>0,95</b></div>
-                  <div class="prob"><span>traço</span><i style="--v:.03"></i><b>0,03</b></div>
-                </div>
-                <p class="file">ia/reconhecimento.py — ReconhecedorCodeVision</p>
-              </div>
-            </li>
-          </ol>
-        </div>
-      </div>
-    </section>
-
-    <!-- 04 · MODELO -->
-    <section id="modelo" class="section section--alt">
-      <div class="wrap grid">
-        <header class="section__head">
-          <span class="section__num">04</span>
-          <h2>O modelo</h2>
-        </header>
-
-        <div class="section__body">
-          <p class="prose big">
-            Uma rede pequena de propósito: três blocos convolucionais e um classificador
-            denso. Suficiente para distinguir um ponto de um traço, leve o bastante para
-            rodar em CPU.
-          </p>
-
-          <div class="net">
-            <div class="net__layer"><span class="net__shape">1 × 32 × 32</span><span class="net__name">entrada</span></div>
-            <div class="net__layer"><span class="net__shape">16 × 16 × 16</span><span class="net__name">Conv 3×3 · BatchNorm · ReLU · MaxPool</span></div>
-            <div class="net__layer"><span class="net__shape">32 × 8 × 8</span><span class="net__name">Conv 3×3 · BatchNorm · ReLU · MaxPool</span></div>
-            <div class="net__layer"><span class="net__shape">64 × 4 × 4</span><span class="net__name">Conv 3×3 · BatchNorm · ReLU · MaxPool</span></div>
-            <div class="net__layer"><span class="net__shape">128</span><span class="net__name">Linear · ReLU · Dropout 0,25</span></div>
-            <div class="net__layer net__layer--out"><span class="net__shape">3</span><span class="net__name">fundo · ponto · traço</span></div>
-          </div>
-
-          <div class="cols">
-            <div>
-              <h3 class="subhead">Treinamento</h3>
-              <ul class="list">
-                <li>Dataset organizado em <code>datasets/fundo</code>, <code>/ponto</code> e <code>/traco</code>.</li>
-                <li>Divisão estratificada 80/20, com semente fixa (42) para reprodutibilidade.</li>
-                <li>Adam, taxa de aprendizado 0,001, <i>weight decay</i> 0,0001, entropia cruzada.</li>
-                <li>Avaliação com matriz de confusão, precisão, <i>recall</i> e F1 por classe.</li>
-              </ul>
+ 
+      <div class="panel-body">
+        <div class="col col-input">
+          <div class="dropzone" id="dropzone" tabindex="0" role="button"
+               aria-label="Escolher imagem para reconhecimento">
+            <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
+            <div class="dz-empty" id="dz-empty">
+              <svg class="dz-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor"
+                   stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 16V4m0 0L8 8m4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+              </svg>
+              <strong>Arraste uma imagem aqui</strong>
+              <span>ou clique para escolher</span>
+              <small>PNG, JPEG, WEBP, BMP · até 10 MB</small>
             </div>
-            <div>
-              <h3 class="subhead">Persistência</h3>
-              <ul class="list">
-                <li>Pesos salvos em <code>modelos/modelo_morse.pth</code>.</li>
-                <li>Um <code>.json</code> ao lado guarda versão do formato, classes e tamanho de entrada.</li>
-                <li>Ao carregar, os metadados são conferidos antes dos pesos — modelos incompatíveis são recusados.</li>
-                <li>Leitura com <code>weights_only=True</code>, sem desserializar código arbitrário.</li>
-              </ul>
-            </div>
-          </div>
-
-<pre class="code"><code><span class="c"># terminal, a partir da raiz do projeto</span>
-python -m ia.treinamento
-
-<span class="c"># ou, em Python</span>
-from ia.treinamento import TreinadorCodeVision
-TreinadorCodeVision("datasets", "modelos").executar(epocas=20)</code></pre>
-        </div>
-      </div>
-    </section>
-
-    <!-- 05 · DEMONSTRAÇÃO -->
-    <section id="demo" class="section section--dark">
-      <div class="wrap grid">
-        <header class="section__head">
-          <span class="section__num">05</span>
-          <h2>Experimente</h2>
-        </header>
-
-        <div class="section__body">
-          <p class="prose big">
-            Esta área conversa diretamente com o backend local. Envie uma imagem com
-            pontos e traços e veja a resposta exatamente como a API a devolve.
-          </p>
-
-          <div class="console">
-            <div class="console__bar">
-              <span class="status" id="status" data-state="checking">
-                <i></i><span id="status-text">verificando backend…</span>
-              </span>
-              <label class="api-url">
-                <span>API</span>
-                <input id="api-url" type="url" value="http://127.0.0.1:8000" spellcheck="false">
-              </label>
-            </div>
-
-            <div class="console__body">
-              <form id="form" class="drop" novalidate>
-                <input id="file" type="file" name="imagem" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
-                <label for="file" class="drop__zone" id="drop-zone">
-                  <img id="preview" alt="" hidden>
-                  <span class="drop__text" id="drop-text">
-                    Arraste uma imagem aqui<br><small>ou clique para escolher · PNG, JPEG, WEBP, BMP · até 10 MB</small>
-                  </span>
-                </label>
-                <button type="submit" class="btn" id="submit" disabled>Reconhecer símbolos</button>
-              </form>
-
-              <div class="result" id="result" aria-live="polite">
-                <div class="result__empty" id="result-empty">
-                  O resultado aparece aqui: a sequência lida, cada símbolo com sua
-                  confiança e o JSON completo da resposta.
-                </div>
-                <div id="result-content" hidden>
-                  <div class="result__meta" id="result-meta"></div>
-                  <div class="result__seq" id="result-seq"></div>
-                  <ol class="result__symbols" id="result-symbols"></ol>
-                  <details class="result__raw">
-                    <summary>Resposta JSON</summary>
-                    <pre id="result-json"></pre>
-                  </details>
-                </div>
+            <div class="dz-preview" id="dz-preview" hidden>
+              <img id="preview-img" alt="Pré-visualização da imagem escolhida">
+              <div class="dz-file">
+                <span id="file-name"></span>
+                <button type="button" class="link-btn" id="clear-btn">Trocar imagem</button>
               </div>
             </div>
           </div>
-
-<pre class="code"><code><span class="c"># o mesmo pedido, pela linha de comando</span>
-curl -X POST http://127.0.0.1:8000/api/reconhecimento/ \
-     -F "imagem=@mensagem.png"</code></pre>
+ 
+          <button type="button" class="primary" id="submit-btn" disabled>Reconhecer símbolos</button>
+        </div>
+ 
+        <div class="col col-output" aria-live="polite">
+          <div class="placeholder" id="placeholder">
+            O resultado aparece aqui: a sequência lida, cada símbolo com sua confiança e o JSON completo da resposta.
+          </div>
+ 
+          <div class="loading" id="loading" hidden>
+            <span class="spinner" aria-hidden="true"></span> Analisando imagem…
+          </div>
+ 
+          <div class="error" id="error" role="alert" hidden></div>
+ 
+          <div class="result" id="result" hidden>
+            <div class="result-block">
+              <h2>Sequência lida</h2>
+              <div class="sequence" id="sequence"></div>
+              <p class="decoded" id="decoded" hidden></p>
+            </div>
+ 
+            <div class="result-block" id="symbols-block" hidden>
+              <h2>Símbolos e confiança</h2>
+              <ul class="symbols" id="symbols"></ul>
+            </div>
+ 
+            <details class="result-block raw" open>
+              <summary>Resposta completa (JSON)</summary>
+              <pre id="raw-json"></pre>
+            </details>
+          </div>
         </div>
       </div>
     </section>
-
-    <!-- 06 · ESTADO -->
-    <section id="estado" class="section">
-      <div class="wrap grid">
-        <header class="section__head">
-          <span class="section__num">06</span>
-          <h2>Onde estamos</h2>
-        </header>
-
-        <div class="section__body">
-          <p class="prose big">
-            Um projeto honesto diz o que ainda não faz. A leitura visual está pronta;
-            transformar a sequência em texto é o próximo passo.
-          </p>
-
-          <ul class="roadmap">
-            <li class="done">Estrutura do repositório e controle de versão</li>
-            <li class="done">API de recebimento e validação de imagens</li>
-            <li class="done">Pré-processamento e segmentação por componentes</li>
-            <li class="done">CNN, treinamento, avaliação e persistência</li>
-            <li class="done">Testes automatizados de serializers e serviço</li>
-            <li>Decodificação Morse → texto (<code>mensagem_decodificada</code>)</li>
-            <li>Separação automática entre letras e palavras</li>
-            <li>Codificação: texto → imagem</li>
-            <li>Validação com imagens reais em condições variadas</li>
-          </ul>
-
-          <h3 class="subhead">Limitações conhecidas</h3>
-          <p class="prose">
-            A segmentação por componentes conectados funciona melhor com símbolos escuros,
-            bem separados e sobre fundo claro. Símbolos encostados, perspectiva acentuada e
-            mensagens em várias linhas ainda não são tratados de forma robusta.
-          </p>
-        </div>
-      </div>
+ 
+    <section class="cli" aria-label="Mesmo pedido pela linha de comando">
+      <p>O mesmo pedido, pela linha de comando</p>
+      <pre><code id="curl-cmd"></code></pre>
     </section>
-
   </main>
-
-  <footer class="footer">
-    <div class="wrap footer__inner">
-      <div>
-        <p class="footer__brand">CodeVision</p>
-        <p class="footer__line">Da imagem à informação. Do código à compreensão.</p>
-      </div>
-      <div class="footer__meta">
-        <p>Projeto acadêmico de Matheus Nunes, Pedro Lucas, Bruna Cayre e João Guilherme.</p>
-        <p><a href="https://github.com/Matheus-Nunes223/CodeVision">github.com/Matheus-Nunes223/CodeVision</a></p>
-      </div>
-    </div>
-  </footer>
-
-  <script src="script.js"></script>
+ 
+  <script>
+(() => {
+  "use strict";
+ 
+  /* ================================================================
+   * CONFIGURAÇÃO — ajuste aqui se os caminhos do seu backend forem outros
+   * ================================================================ */
+  const RECOGNITION_PATH = "/api/reconhecimento/"; // POST, multipart, campo "imagem"
+  const STATUS_PATH = "/api/status/";              // GET (confira em backend/.../urls.py)
+  const FILE_FIELD = "imagem";
+  const MAX_BYTES = 10 * 1024 * 1024;
+  const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/bmp"];
+  const LOW_CONFIDENCE = 0.6; // abaixo disso o símbolo é destacado como incerto
+  const REQUEST_TIMEOUT_MS = 30000;
+ 
+  /* ================================================================
+   * Elementos
+   * ================================================================ */
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    apiUrl: $("api-url"),
+    status: $("status"),
+    statusText: $("status-text"),
+    dropzone: $("dropzone"),
+    fileInput: $("file-input"),
+    dzEmpty: $("dz-empty"),
+    dzPreview: $("dz-preview"),
+    previewImg: $("preview-img"),
+    fileName: $("file-name"),
+    clearBtn: $("clear-btn"),
+    submitBtn: $("submit-btn"),
+    placeholder: $("placeholder"),
+    loading: $("loading"),
+    error: $("error"),
+    result: $("result"),
+    sequence: $("sequence"),
+    decoded: $("decoded"),
+    symbolsBlock: $("symbols-block"),
+    symbols: $("symbols"),
+    rawJson: $("raw-json"),
+    curl: $("curl-cmd"),
+  };
+ 
+  let selectedFile = null;
+  let previewUrl = null;
+  let statusTimer = null;
+ 
+  const apiBase = () => el.apiUrl.value.trim().replace(/\/+$/, "");
+ 
+  /* ================================================================
+   * Status do backend
+   * ================================================================ */
+  function setStatus(state, text) {
+    el.status.dataset.state = state;
+    el.statusText.textContent = text;
+  }
+ 
+  async function checkBackend() {
+    setStatus("checking", "Verificando o backend…");
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const res = await fetch(apiBase() + STATUS_PATH, { signal: ctrl.signal });
+      if (res.status === 503) {
+        setStatus("no-model", "Backend online · modelo não treinado");
+        return;
+      }
+      if (res.ok) {
+        let data = null;
+        try { data = await res.json(); } catch (_) { /* resposta não-JSON */ }
+        const flag = data && pick(data, [
+          "modelo_disponivel", "modelo_carregado", "model_loaded", "model_available", "disponivel",
+        ]);
+        if (flag === false) {
+          setStatus("no-model", "Backend online · modelo não treinado");
+          return;
+        }
+      }
+      // 200, 404 etc.: o servidor respondeu, então está no ar.
+      setStatus("online", "Backend online");
+    } catch (_) {
+      setStatus("offline", "Backend offline — rode python manage.py runserver");
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+ 
+  function scheduleStatusCheck() {
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(checkBackend, 400);
+  }
+ 
+  /* ================================================================
+   * Seleção de arquivo
+   * ================================================================ */
+  function showError(message) {
+    el.error.textContent = message;
+    el.error.hidden = false;
+    el.placeholder.hidden = true;
+    el.loading.hidden = true;
+    el.result.hidden = true;
+  }
+ 
+  function resetOutput() {
+    el.error.hidden = true;
+    el.result.hidden = true;
+    el.loading.hidden = true;
+    el.placeholder.hidden = false;
+  }
+ 
+  function validate(file) {
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return "Formato não suportado. Use PNG, JPEG, WEBP ou BMP.";
+    }
+    if (file.size > MAX_BYTES) {
+      return "A imagem passa de 10 MB. Escolha um arquivo menor.";
+    }
+    return null;
+  }
+ 
+  function setFile(file) {
+    const problem = validate(file);
+    if (problem) {
+      clearFile();
+      showError(problem);
+      return;
+    }
+    selectedFile = file;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(file);
+    el.previewImg.src = previewUrl;
+    el.fileName.textContent = file.name;
+    el.dzEmpty.hidden = true;
+    el.dzPreview.hidden = false;
+    el.submitBtn.disabled = false;
+    resetOutput();
+    updateCurl();
+  }
+ 
+  function clearFile() {
+    selectedFile = null;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    el.fileInput.value = "";
+    el.previewImg.removeAttribute("src");
+    el.dzPreview.hidden = true;
+    el.dzEmpty.hidden = false;
+    el.submitBtn.disabled = true;
+    updateCurl();
+  }
+ 
+  el.dropzone.addEventListener("click", (e) => {
+    if (e.target === el.clearBtn) return;
+    el.fileInput.click();
+  });
+  el.dropzone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      el.fileInput.click();
+    }
+  });
+  el.clearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    clearFile();
+    resetOutput();
+  });
+  el.fileInput.addEventListener("change", () => {
+    if (el.fileInput.files[0]) setFile(el.fileInput.files[0]);
+  });
+ 
+  ["dragenter", "dragover"].forEach((type) =>
+    el.dropzone.addEventListener(type, (e) => {
+      e.preventDefault();
+      el.dropzone.classList.add("is-over");
+    })
+  );
+  ["dragleave", "drop"].forEach((type) =>
+    el.dropzone.addEventListener(type, (e) => {
+      e.preventDefault();
+      el.dropzone.classList.remove("is-over");
+    })
+  );
+  el.dropzone.addEventListener("drop", (e) => {
+    const file = e.dataTransfer.files[0];
+    if (file) setFile(file);
+  });
+ 
+  /* ================================================================
+   * Envio para a API
+   * ================================================================ */
+  async function recognize() {
+    if (!selectedFile) return;
+ 
+    el.submitBtn.disabled = true;
+    el.error.hidden = true;
+    el.result.hidden = true;
+    el.placeholder.hidden = true;
+    el.loading.hidden = false;
+ 
+    const body = new FormData();
+    body.append(FILE_FIELD, selectedFile);
+ 
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+ 
+    try {
+      const res = await fetch(apiBase() + RECOGNITION_PATH, {
+        method: "POST",
+        body,
+        signal: ctrl.signal,
+      });
+ 
+      let data = null;
+      const text = await res.text();
+      try { data = text ? JSON.parse(text) : null; } catch (_) { /* não-JSON */ }
+ 
+      if (!res.ok) {
+        showError(httpErrorMessage(res.status, data));
+        return;
+      }
+      render(data ?? { resposta: text });
+    } catch (err) {
+      if (err.name === "AbortError") {
+        showError("A API demorou demais para responder. Tente novamente.");
+      } else {
+        showError(
+          "Não foi possível falar com o backend. Confira se o servidor está rodando " +
+          "e se a página foi aberta por http://127.0.0.1:5173 (não por file://), " +
+          "por causa do CORS."
+        );
+        setStatus("offline", "Backend offline — rode python manage.py runserver");
+      }
+    } finally {
+      clearTimeout(timer);
+      el.loading.hidden = true;
+      el.submitBtn.disabled = !selectedFile;
+    }
+  }
+ 
+  function httpErrorMessage(status, data) {
+    const detail = data && pick(data, ["erro", "error", "detail", "detalhe", "mensagem", "message"]);
+    if (status === 503) {
+      return "O modelo ainda não foi treinado. Rode python -m ia.treinamento na raiz do projeto e tente de novo.";
+    }
+    if (status === 413) return "A imagem é grande demais para a API.";
+    if (detail) return `A API recusou o pedido (${status}): ${detail}`;
+    return `A API respondeu com erro ${status}.`;
+  }
+ 
+  el.submitBtn.addEventListener("click", recognize);
+ 
+  /* ================================================================
+   * Renderização — tolera nomes de campos diferentes
+   * ================================================================ */
+  function pick(obj, keys) {
+    for (const k of keys) {
+      if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== null && obj[k] !== undefined) {
+        return obj[k];
+      }
+    }
+    return undefined;
+  }
+ 
+  function normalizeSymbols(list) {
+    if (!Array.isArray(list)) return [];
+    return list.map((item) => {
+      if (typeof item === "string") return { symbol: item, confidence: null };
+      const symbol = pick(item, ["simbolo", "symbol", "classe", "class", "label", "rotulo"]);
+      let conf = pick(item, ["confianca", "confidence", "probabilidade", "probability", "score"]);
+      if (typeof conf === "number" && conf > 1) conf = conf / 100; // aceita 0–100
+      return { symbol: String(symbol ?? "?"), confidence: typeof conf === "number" ? conf : null };
+    });
+  }
+ 
+  function render(data) {
+    el.rawJson.textContent = JSON.stringify(data, null, 2);
+ 
+    const symbols = normalizeSymbols(
+      pick(data, ["simbolos", "symbols", "resultados", "predicoes", "predictions", "deteccoes"])
+    );
+    const sequence =
+      pick(data, ["sequencia", "sequence", "morse", "codigo", "code"]) ??
+      (symbols.length ? symbols.map((s) => s.symbol).join("") : "");
+    const decoded = pick(data, ["texto", "mensagem", "message", "text", "texto_decodificado", "decodificado"]);
+ 
+    el.sequence.textContent = sequence || "(nenhum símbolo reconhecido)";
+ 
+    if (decoded) {
+      el.decoded.textContent = String(decoded);
+      el.decoded.hidden = false;
+    } else {
+      el.decoded.hidden = true;
+    }
+ 
+    el.symbols.replaceChildren();
+    symbols.forEach((s) => {
+      const li = document.createElement("li");
+      const sym = document.createElement("span");
+      sym.className = "sym";
+      sym.textContent = s.symbol;
+      li.append(sym);
+ 
+      if (s.confidence !== null) {
+        const pct = document.createElement("span");
+        pct.className = "pct";
+        pct.textContent = `${(s.confidence * 100).toFixed(1)}%`;
+        const bar = document.createElement("span");
+        bar.className = "bar";
+        const fill = document.createElement("i");
+        fill.style.width = `${Math.max(0, Math.min(1, s.confidence)) * 100}%`;
+        bar.append(fill);
+        li.append(pct, bar);
+        li.dataset.low = String(s.confidence < LOW_CONFIDENCE);
+      }
+      el.symbols.append(li);
+    });
+    el.symbolsBlock.hidden = symbols.length === 0;
+ 
+    el.placeholder.hidden = true;
+    el.result.hidden = false;
+  }
+ 
+  /* ================================================================
+   * Bloco do curl (acompanha a URL da API e o arquivo escolhido)
+   * ================================================================ */
+  function updateCurl() {
+    const name = selectedFile ? selectedFile.name : "mensagem.png";
+    el.curl.textContent =
+      `curl -X POST ${apiBase()}${RECOGNITION_PATH} \\\n` +
+      `     -F "${FILE_FIELD}=@${name}"`;
+  }
+ 
+  el.apiUrl.addEventListener("input", () => {
+    updateCurl();
+    scheduleStatusCheck();
+  });
+ 
+  /* ================================================================
+   * Início
+   * ================================================================ */
+  updateCurl();
+  checkBackend();
+})();
+ 
+</script>
 </body>
 </html>
+ 
