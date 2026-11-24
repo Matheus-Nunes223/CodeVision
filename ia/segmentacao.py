@@ -39,10 +39,12 @@ LIMIAR_PAUTA = 215
 # Tom (0 = preto, 255 = papel) acima do qual uma linha inteira é
 # impressão cinza da gráfica (logotipo, caixa de data), não tinta.
 TOM_MAXIMO_LINHA = 115
+# Quanto um componente pode ser mais claro que a tinta da sua linha.
+FOLGA_TOM = 70
 
 # O papel na sombra fica em ~45% do brilho do papel claro; objetos
 # escuros (lapiseira, mesa, tecido) ficam abaixo de ~35%.
-FRACAO_PAPEL = 0.38
+FRACAO_NUCLEO = 0.25
 
 
 @dataclass
@@ -103,7 +105,24 @@ def _mascara_papel(cinza: np.ndarray) -> np.ndarray:
         21,
     )
     referencia = float(np.percentile(borrada, 95))
-    clara = (borrada > FRACAO_PAPEL * referencia).astype(np.uint8) * 255
+
+    # Objetos escuros (lapiseira, mesa, tecido) têm um "núcleo" bem mais
+    # escuro que qualquer sombra sobre o papel. Reflexos e letras claras
+    # dentro do objeto são preenchidos pelo fechamento; a dilatação
+    # afasta as bordas. Todo o resto, inclusive a sombra, é papel.
+    nucleo = (borrada < FRACAO_NUCLEO * referencia).astype(np.uint8) * 255
+    k_objeto = max(15, int(max(cinza.shape) / 25) | 1)
+    nucleo = cv2.morphologyEx(
+        nucleo,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_objeto, k_objeto)),
+    )
+    k_margem = max(7, (k_objeto // 2) | 1)
+    escuro = cv2.dilate(
+        nucleo,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_margem, k_margem)),
+    )
+    clara = cv2.bitwise_not(escuro)
 
     numero, rotulos, estatisticas, _ = cv2.connectedComponentsWithStats(
         clara, connectivity=4
@@ -235,27 +254,34 @@ def _componentes(mascara: np.ndarray) -> tuple[list[Componente], np.ndarray]:
 def _sem_colunas(componentes: list[Componente]) -> list[Componente]:
     """
     Remove manchas empilhadas numa coluna vertical (furos da espiral,
-    marcas da margem). Texto Morse corre na horizontal e nunca forma
-    colunas de 6 ou mais manchas alinhadas.
+    marcas da margem).
+
+    Uma coluna de espiral tem muitas manchas do mesmo tamanho, exatamente
+    alinhadas. Texto com várias linhas começando na mesma margem também
+    alinha símbolos na vertical, mas de tamanhos diferentes (pontos e
+    traços) e com alinhamento frouxo; por isso as três condições.
     """
     relevantes = [c for c in componentes if c.area >= 15]
-    if len(relevantes) < 6:
+    if len(relevantes) < 7:
         return componentes
 
     cx = np.array([c.x + c.largura / 2 for c in relevantes])
     cy = np.array([c.centro_y for c in relevantes])
     largura = np.array([c.largura for c in relevantes], dtype=float)
     altura = np.array([c.altura for c in relevantes], dtype=float)
+    area = np.array([c.area for c in relevantes], dtype=float)
 
-    mesma_coluna = np.abs(cx[:, None] - cx[None, :]) < 0.6 * np.maximum(
+    alinhado = np.abs(cx[:, None] - cx[None, :]) < 0.5 * np.minimum(
         largura[:, None], largura[None, :]
-    )
+    ) + 2
     outra_linha = np.abs(cy[:, None] - cy[None, :]) > 1.5 * np.maximum(
         altura[:, None], altura[None, :]
     )
-    vizinhos = (mesma_coluna & outra_linha).sum(axis=1)
+    razao_area = area[:, None] / area[None, :]
+    mesmo_tamanho = (razao_area > 0.5) & (razao_area < 2.0)
+    vizinhos = (alinhado & outra_linha & mesmo_tamanho).sum(axis=1)
 
-    em_coluna = {id(c) for c, n in zip(relevantes, vizinhos) if n >= 5}
+    em_coluna = {id(c) for c, n in zip(relevantes, vizinhos) if n >= 6}
     return [c for c in componentes if id(c) not in em_coluna]
 
 
@@ -391,7 +417,17 @@ def _limpar_linha(
         return None
 
     # Impressão cinza da gráfica (logotipo, caixa de data) não é tinta.
-    if float(np.median([c.tom for c in simbolos])) > TOM_MAXIMO_LINHA:
+    tom_linha = float(np.median([c.tom for c in simbolos]))
+    if tom_linha > TOM_MAXIMO_LINHA:
+        return None
+
+    # Restos de pauta e sujeira clara são bem mais claros que a tinta da
+    # própria linha. Relativo à linha: caneta fraca tem tom alto em todos
+    # os símbolos e não é afetada.
+    linha = [c for c in linha if c.tom <= tom_linha + FOLGA_TOM]
+
+    simbolos = [c for c in linha if not c.barra]
+    if len(simbolos) < 2:
         return None
 
     # Texto é quase horizontal: os centros ficam numa faixa estreita em
@@ -551,7 +587,6 @@ def segmentar(cinza: np.ndarray) -> ResultadoSegmentacao:
         return ResultadoSegmentacao(imagem, [], None, 0.0, angulo, escala)
 
     componentes = _sem_colunas(componentes)
-    d = _espessura_tipica(componentes, tinta.shape)
 
     # Componentes cortados pela borda da foto não são símbolos inteiros.
     altura, largura = tinta.shape
@@ -564,6 +599,11 @@ def segmentar(cinza: np.ndarray) -> ResultadoSegmentacao:
         janela = norm[c.y:c.y + c.altura, c.x:c.direita]
         proprio = rotulos[c.y:c.y + c.altura, c.x:c.direita] == c.rotulo
         c.tom = int(np.percentile(janela[proprio], 10))
+
+    # A espessura típica vem só do que tem tom de tinta: restos claros
+    # de pauta e impressões cinza não devem puxar a estimativa.
+    escuros = [c for c in componentes if c.tom <= TOM_MAXIMO_LINHA]
+    d = _espessura_tipica(escuros or componentes, tinta.shape)
 
     candidatos = _filtrar(componentes, d)
     linhas = _agrupar_linhas(candidatos, posicoes, d)
