@@ -30,8 +30,10 @@ import numpy as np
 
 LADO_TRABALHO = 1600
 
-# A tinta é bem mais escura que a pauta impressa no papel normalizado.
-LIMIAR_TINTA = 140
+# Tinta no papel normalizado (0 = preto, 255 = papel). Alto o bastante
+# para pegar traços finos e claros; o que a pauta deixar passar é
+# removido pela detecção das linhas longas.
+LIMIAR_TINTA = 170
 LIMIAR_PAUTA = 215
 
 # Tom (0 = preto, 255 = papel) acima do qual uma linha inteira é
