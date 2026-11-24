@@ -34,6 +34,10 @@ LADO_TRABALHO = 1600
 LIMIAR_TINTA = 140
 LIMIAR_PAUTA = 215
 
+# Tom (0 = preto, 255 = papel) acima do qual uma linha inteira é
+# impressão cinza da gráfica (logotipo, caixa de data), não tinta.
+TOM_MAXIMO_LINHA = 115
+
 # O papel na sombra fica em ~45% do brilho do papel claro; objetos
 # escuros (lapiseira, mesa, tecido) ficam abaixo de ~35%.
 FRACAO_PAPEL = 0.38
@@ -49,6 +53,7 @@ class Componente:
     altura: int
     area: int
     rotulo: int = 0  # índice do componente em ResultadoSegmentacao.rotulos
+    tom: int = 0  # 10º percentil do brilho (0 = preto) na imagem normalizada
     barra: bool = False
 
     @property
@@ -285,7 +290,7 @@ def _filtrar(componentes: list[Componente], d: float) -> list[Componente]:
             aceitos.append(c)
             continue
 
-        if menor > 3.0 * d or maior > 14 * d:
+        if menor > 5.0 * d or maior > 14 * d:
             continue  # lapiseira, espiral, manchas grandes
         if c.area < 0.4 * d * d:
             continue  # poeira do papel
@@ -349,7 +354,7 @@ def _agrupar_linhas(
     linhas = [parte for linha in linhas for parte in _separar_por_altura(linha, vao)]
 
     linhas = [sorted(linha, key=lambda c: c.x) for linha in linhas]
-    limpas = (_limpar_linha(linha, d) for linha in linhas)
+    limpas = (_limpar_linha(linha, d, espacamento) for linha in linhas)
     return [linha for linha in limpas if linha]
 
 
@@ -370,6 +375,7 @@ def _separar_por_altura(
 def _limpar_linha(
     linha: list[Componente],
     d: float,
+    espacamento: float = 0.0,
 ) -> list[Componente] | None:
     """
     Mantém só o que se alinha horizontalmente com o texto da linha.
@@ -380,6 +386,10 @@ def _limpar_linha(
     """
     simbolos = [c for c in linha if not c.barra]
     if len(simbolos) < 2:
+        return None
+
+    # Impressão cinza da gráfica (logotipo, caixa de data) não é tinta.
+    if float(np.median([c.tom for c in simbolos])) > TOM_MAXIMO_LINHA:
         return None
 
     # Texto é quase horizontal: os centros ficam numa faixa estreita em
@@ -400,7 +410,10 @@ def _limpar_linha(
 
     def alinhado(c: Componente) -> bool:
         residuo = c.centro_y - inclinacao * (c.x + c.largura / 2) - centro
-        return abs(residuo) <= (8 if c.barra else 7) * d
+        # Com pauta, o limite acompanha o espaçamento: há quem escreva o
+        # traço bem acima do ponto.
+        tolerancia = max((8 if c.barra else 7) * d, 0.75 * espacamento)
+        return abs(residuo) <= tolerancia
 
     limpa = [c for c in linha if alinhado(c)]
     simbolos = [c for c in limpa if not c.barra]
@@ -545,6 +558,11 @@ def segmentar(cinza: np.ndarray) -> ResultadoSegmentacao:
         if c.x > 1 and c.y > 1
         and c.direita < largura - 1 and c.y + c.altura < altura - 1
     ]
+    for c in componentes:
+        janela = norm[c.y:c.y + c.altura, c.x:c.direita]
+        proprio = rotulos[c.y:c.y + c.altura, c.x:c.direita] == c.rotulo
+        c.tom = int(np.percentile(janela[proprio], 10))
+
     candidatos = _filtrar(componentes, d)
     linhas = _agrupar_linhas(candidatos, posicoes, d)
 
