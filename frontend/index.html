@@ -461,7 +461,7 @@ pre {
    * CONFIGURAÇÃO — ajuste aqui se os caminhos do seu backend forem outros
    * ================================================================ */
   const RECOGNITION_PATH = "/api/reconhecimento/"; // POST, multipart, campo "imagem"
-  const STATUS_PATH = "/api/status/";              // GET (confira em backend/.../urls.py)
+  const STATUS_PATH = "/api/reconhecimento/status/"; // GET
   const FILE_FIELD = "imagem";
   const MAX_BYTES = 10 * 1024 * 1024;
   const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/bmp"];
