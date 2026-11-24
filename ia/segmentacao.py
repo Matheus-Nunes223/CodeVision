@@ -116,10 +116,35 @@ def _mascara_papel(cinza: np.ndarray) -> np.ndarray:
         cv2.MORPH_CLOSE,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)),
     )
+    papel = _preencher_buracos(papel)
     k = max(11, int(max(cinza.shape) / 75) | 1)
     return cv2.erode(
         papel, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
     )
+
+
+def _preencher_buracos(papel: np.ndarray) -> np.ndarray:
+    """
+    Marca como papel toda região escura cercada de papel.
+
+    Pontos grossos de caneta parecem "regiões escuras" para a máscara;
+    mesa e objetos sobre a folha sempre chegam à borda da foto, então
+    só o que não toca a borda é preenchido.
+    """
+    fora = (papel == 0).astype(np.uint8)
+    numero, rotulos, estatisticas, _ = cv2.connectedComponentsWithStats(
+        fora, connectivity=4
+    )
+    altura, largura = papel.shape
+    preenchido = papel.copy()
+
+    for i in range(1, numero):
+        x, y, w, h, _ = estatisticas[i]
+        toca_borda = x == 0 or y == 0 or x + w >= largura or y + h >= altura
+        if not toca_borda:
+            preenchido[rotulos == i] = 255
+
+    return preenchido
 
 
 def _angulo_pautas(norm: np.ndarray) -> float:
@@ -178,6 +203,16 @@ def _posicoes_pautas(pautas: np.ndarray) -> list[float]:
     return posicoes
 
 
+def _espessura_pautas(pautas: np.ndarray, quantidade: int) -> int:
+    """Espessura média das pautas, em pixels (ímpar, de 3 a 15)."""
+    if quantidade == 0:
+        return 3
+    pixels = int((pautas > 0).sum())
+    largura = max(1, int((pautas > 0).any(axis=0).sum()))
+    espessura = int(round(pixels / (quantidade * largura)))
+    return int(np.clip(espessura | 1, 3, 15))
+
+
 def _componentes(mascara: np.ndarray) -> tuple[list[Componente], np.ndarray]:
     _, rotulos, estatisticas, _ = cv2.connectedComponentsWithStats(
         mascara, connectivity=8
@@ -188,6 +223,33 @@ def _componentes(mascara: np.ndarray) -> tuple[list[Componente], np.ndarray]:
         if a >= 6
     ]
     return componentes, rotulos
+
+
+def _sem_colunas(componentes: list[Componente]) -> list[Componente]:
+    """
+    Remove manchas empilhadas numa coluna vertical (furos da espiral,
+    marcas da margem). Texto Morse corre na horizontal e nunca forma
+    colunas de 6 ou mais manchas alinhadas.
+    """
+    relevantes = [c for c in componentes if c.area >= 15]
+    if len(relevantes) < 6:
+        return componentes
+
+    cx = np.array([c.x + c.largura / 2 for c in relevantes])
+    cy = np.array([c.centro_y for c in relevantes])
+    largura = np.array([c.largura for c in relevantes], dtype=float)
+    altura = np.array([c.altura for c in relevantes], dtype=float)
+
+    mesma_coluna = np.abs(cx[:, None] - cx[None, :]) < 0.6 * np.maximum(
+        largura[:, None], largura[None, :]
+    )
+    outra_linha = np.abs(cy[:, None] - cy[None, :]) > 1.5 * np.maximum(
+        altura[:, None], altura[None, :]
+    )
+    vizinhos = (mesma_coluna & outra_linha).sum(axis=1)
+
+    em_coluna = {id(c) for c, n in zip(relevantes, vizinhos) if n >= 5}
+    return [c for c in componentes if id(c) not in em_coluna]
 
 
 def _espessura_tipica(componentes: list[Componente], forma) -> float:
@@ -225,7 +287,7 @@ def _filtrar(componentes: list[Componente], d: float) -> list[Componente]:
 
         if menor > 3.0 * d or maior > 14 * d:
             continue  # lapiseira, espiral, manchas grandes
-        if c.area < 0.8 * d * d:
+        if c.area < 0.4 * d * d:
             continue  # poeira do papel
         if preenchimento < 0.25:
             continue  # contornos finos (logotipos, bordas)
@@ -281,9 +343,28 @@ def _agrupar_linhas(
         if atual:
             linhas.append(atual)
 
+    # Se a pauta entre duas linhas de texto não foi detectada, as duas
+    # caem no mesmo grupo: separa pelo vão vertical entre os símbolos.
+    vao = max(4.5 * d, 0.5 * espacamento)
+    linhas = [parte for linha in linhas for parte in _separar_por_altura(linha, vao)]
+
     linhas = [sorted(linha, key=lambda c: c.x) for linha in linhas]
     limpas = (_limpar_linha(linha, d) for linha in linhas)
     return [linha for linha in limpas if linha]
+
+
+def _separar_por_altura(
+    linha: list[Componente],
+    vao: float,
+) -> list[list[Componente]]:
+    """Divide um grupo onde houver um vão vertical maior que `vao`."""
+    ordenada = sorted(linha, key=lambda c: c.centro_y)
+    partes = [[ordenada[0]]] if ordenada else []
+    for anterior, atual in zip(ordenada, ordenada[1:]):
+        if atual.centro_y - anterior.centro_y > vao:
+            partes.append([])
+        partes[-1].append(atual)
+    return partes
 
 
 def _limpar_linha(
@@ -403,10 +484,17 @@ def segmentar(cinza: np.ndarray) -> ResultadoSegmentacao:
     Args:
         cinza: imagem em tons de cinza (uint8), em qualquer resolução.
     """
-    escala = min(1.0, LADO_TRABALHO / max(cinza.shape))
-    if escala < 1:
+    # Toda foto vai para a mesma escala de trabalho: reduzida se for
+    # grande, ampliada se for um recorte pequeno. Os filtros e operações
+    # morfológicas abaixo foram calibrados nessa escala.
+    escala = LADO_TRABALHO / max(cinza.shape)
+    if escala != 1:
         cinza = cv2.resize(
-            cinza, None, fx=escala, fy=escala, interpolation=cv2.INTER_AREA
+            cinza,
+            None,
+            fx=escala,
+            fy=escala,
+            interpolation=cv2.INTER_AREA if escala < 1 else cv2.INTER_CUBIC,
         )
 
     norm = _normalizar_iluminacao(cinza)
@@ -430,12 +518,16 @@ def segmentar(cinza: np.ndarray) -> ResultadoSegmentacao:
     pautas = cv2.bitwise_and(pautas, papel)
     posicoes = _posicoes_pautas(pautas)
 
+    # A faixa removida acompanha a espessura real da pauta nesta foto.
+    faixa = _espessura_pautas(pautas, len(posicoes)) + 2
     tinta = cv2.subtract(
-        tinta, cv2.dilate(pautas, np.ones((5, 1), np.uint8))
+        tinta, cv2.dilate(pautas, np.ones((faixa, 1), np.uint8))
     )
     # Religa pontos, traços e barras "/" cortados pela faixa removida da
     # pauta (a barra cruza a pauta na diagonal, por isso 3 px de largura).
-    tinta = cv2.morphologyEx(tinta, cv2.MORPH_CLOSE, np.ones((9, 3), np.uint8))
+    tinta = cv2.morphologyEx(
+        tinta, cv2.MORPH_CLOSE, np.ones((faixa + 4, 3), np.uint8)
+    )
     tinta = cv2.bitwise_and(tinta, papel)
     tinta = cv2.morphologyEx(tinta, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
 
@@ -443,6 +535,7 @@ def segmentar(cinza: np.ndarray) -> ResultadoSegmentacao:
     if not componentes:
         return ResultadoSegmentacao(imagem, [], None, 0.0, angulo, escala)
 
+    componentes = _sem_colunas(componentes)
     d = _espessura_tipica(componentes, tinta.shape)
 
     # Componentes cortados pela borda da foto não são símbolos inteiros.

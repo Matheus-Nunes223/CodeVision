@@ -51,15 +51,18 @@ def _limiar_entre_letras(espacos: list[float], referencia: float) -> float:
     """
     Separa espaços dentro da letra dos espaços entre letras.
 
-    Usa 2-médias em escala logarítmica. Se os espaços não formam dois
-    grupos claros, usa um múltiplo da referência (tamanho de um ponto).
+    Usa 2-médias em escala logarítmica. Espaços <= 0 são de símbolos
+    sobrepostos (traço escrito acima do ponto) e não entram na conta.
+    Se os espaços não formam dois grupos claros, usa um múltiplo da
+    referência (tamanho de um ponto).
     """
     padrao = 2.5 * referencia
+    positivos = [e for e in espacos if e > 0]
 
-    if len(espacos) < 2:
+    if len(positivos) < 2:
         return padrao
 
-    valores = np.log1p(np.maximum(espacos, 0))
+    valores = np.log1p(np.array(positivos, dtype=float))
     baixo, alto = valores.min(), valores.max()
 
     if alto - baixo < np.log(2):
@@ -93,9 +96,13 @@ def separar_letras(
     ordenada = sorted(linha, key=lambda s: s.x)
     pontos_tracos = [s for s in ordenada if s.simbolo in ".-"]
 
+    # Espaços que atravessam uma barra "/" são entre palavras: ficam fora
+    # da estimativa do espaço entre letras.
+    barras = [s.x for s in ordenada if s.simbolo == "/"]
     espacos = [
         b.x - (a.x + a.largura)
         for a, b in zip(pontos_tracos, pontos_tracos[1:])
+        if not any(a.x < x < b.x for x in barras)
     ]
     limiar_letra = _limiar_entre_letras(espacos, referencia)
     limiar_palavra = max(3 * limiar_letra, 6 * referencia)

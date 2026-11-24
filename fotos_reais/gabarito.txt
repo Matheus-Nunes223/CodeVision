@@ -1,0 +1,31 @@
+# Uma foto por linha. Várias linhas de texto da mesma foto separadas por "|".
+# O gabarito é o que está DESENHADO na foto (é isso que o sistema deve ler).
+# Linhas cortadas pela borda da foto não entram.
+
+foto01.jpg: OLA MUNDO
+foto02.jpg: BOM DIA
+foto03.jpg: BOA NOITE
+foto04.jpg: OBRIGADO
+foto05.jpg: SOS
+foto06.jpg: EU GOSTO DE ESTUDAR
+foto07.jpg: QUE HORAS SAO
+foto08.jpg: ESTOU CHEGANDO
+foto09.jpg: VAMOS ESTUDAR REDES
+foto10.jpg: REDES
+# foto11: desenhado ".. -." (IN). A lista corrigida diz LA (".-.. .-").
+foto11.jpg: IN
+# foto12: desenhado "... .. -." (SIN). A lista corrigida diz SIM ("... .. --").
+foto12.jpg: SIN
+foto13.jpg: NAO | LUZ | AGUA | PAZ
+foto14.jpg: CASA | AGUA | PAZ | DIA | AMOR
+foto15.jpg: LUZ | PAZ | DIA | AMOR
+foto16.jpg: AGUA | DIA | AMOR
+foto17.jpg: PAZ | AMOR
+foto18.jpg: DIA
+foto19.jpg: AMOR
+
+foto21.jpg: SOS | EU GOSTO DE ESTUDAR
+foto22.jpg: QUE HORAS SAO
+foto23.jpg: ESTOU CHEGANDO
+foto24.jpg: ESTOU CHEGANDO | VAMOS ESTUDAR REDES
+foto25.jpg: REDES
