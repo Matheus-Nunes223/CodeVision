@@ -29,6 +29,10 @@ import numpy as np
 
 
 LADO_TRABALHO = 1600
+# Letra miúda: abaixo desta espessura de traço (px), amplia a foto 2x,
+# até o lado maior chegar a LADO_MAXIMO.
+ESPESSURA_MINIMA = 5
+LADO_MAXIMO = 3200
 
 # Tinta no papel normalizado (0 = preto, 255 = papel). Alto o bastante
 # para pegar traços finos e claros; o que a pauta deixar passar é
@@ -551,13 +555,32 @@ def segmentar(cinza: np.ndarray) -> ResultadoSegmentacao:
     """
     Localiza e agrupa candidatos a símbolos em uma foto.
 
+    A escala de trabalho começa pelo tamanho da página. Se a letra for
+    miúda (traço da caneta abaixo de ESPESSURA_MINIMA px), a foto é
+    processada de novo ampliada 2x: o que importa para os filtros e para
+    a CNN é o tamanho dos símbolos, não o da página.
+
     Args:
         cinza: imagem em tons de cinza (uint8), em qualquer resolução.
     """
+    lado = LADO_TRABALHO
+    resultado = _segmentar_na_escala(cinza, lado)
+    while (
+        resultado.linhas
+        and resultado.espessura < ESPESSURA_MINIMA
+        and lado * 2 <= LADO_MAXIMO
+    ):
+        lado *= 2
+        resultado = _segmentar_na_escala(cinza, lado)
+    return resultado
+
+
+def _segmentar_na_escala(cinza: np.ndarray, lado: int) -> ResultadoSegmentacao:
+    """Segmentação com o lado maior da foto levado a `lado` pixels."""
     # Toda foto vai para a mesma escala de trabalho: reduzida se for
     # grande, ampliada se for um recorte pequeno. Os filtros e operações
     # morfológicas abaixo foram calibrados nessa escala.
-    escala = LADO_TRABALHO / max(cinza.shape)
+    escala = lado / max(cinza.shape)
     if escala != 1:
         cinza = cv2.resize(
             cinza,
