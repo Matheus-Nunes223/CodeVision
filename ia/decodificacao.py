@@ -83,29 +83,78 @@ def _limiar_entre_letras(espacos: list[float], referencia: float) -> float:
     return float(np.expm1((baixo + alto) / 2))
 
 
+def _espacos_da_linha(linha: list[SimboloPosicionado]) -> list[float]:
+    """
+    Espaços entre pontos/traços vizinhos de uma linha.
+
+    Espaços que atravessam uma barra "/" são entre palavras e ficam fora.
+    """
+    ordenada = sorted(linha, key=lambda s: s.x)
+    pontos_tracos = [s for s in ordenada if s.simbolo in ".-"]
+    barras = [s.x for s in ordenada if s.simbolo == "/"]
+    return [
+        b.x - (a.x + a.largura)
+        for a, b in zip(pontos_tracos, pontos_tracos[1:])
+        if not any(a.x < x < b.x for x in barras)
+    ]
+
+
+def estimar_limiar_letra(
+    linhas: list[list[SimboloPosicionado]],
+    diametro_ponto: float,
+) -> float:
+    """
+    Limiar entre "espaço dentro da letra" e "espaço entre letras" para a
+    página inteira.
+
+    A mesma pessoa usa o mesmo espaçamento em todas as linhas, então os
+    espaços de todas elas entram juntos: linhas curtas ("DIA", "IN")
+    aproveitam o que as outras mostram.
+
+    Espaços menores que meio ponto (traço escrito quase em cima do
+    ponto) não dizem nada sobre o espaçamento da pessoa e ficam fora:
+    sozinhos, eles formariam um "grupo" e puxariam o limiar para baixo.
+    """
+    espacos = [
+        e for linha in linhas for e in _espacos_da_linha(linha)
+        if e >= 0.5 * diametro_ponto
+    ]
+    limiar = _limiar_entre_letras(espacos, diametro_ponto)
+    return max(limiar, 1.2 * diametro_ponto)
+
+
 def separar_letras(
     linha: list[SimboloPosicionado],
     referencia: float,
+    limiar_letra: float | None = None,
 ) -> list[list[str]]:
     """
     Divide uma linha em palavras, e cada palavra em códigos de letras.
+
+    Args:
+        linha: símbolos da linha.
+        referencia: tamanho de referência em pixels (diâmetro do ponto).
+        limiar_letra: limiar já estimado para a página; se omitido, é
+            estimado só com os espaços desta linha.
 
     Returns:
         Lista de palavras; cada palavra é uma lista de códigos ('.-').
     """
     ordenada = sorted(linha, key=lambda s: s.x)
-    pontos_tracos = [s for s in ordenada if s.simbolo in ".-"]
 
-    # Espaços que atravessam uma barra "/" são entre palavras: ficam fora
-    # da estimativa do espaço entre letras.
-    barras = [s.x for s in ordenada if s.simbolo == "/"]
-    espacos = [
-        b.x - (a.x + a.largura)
-        for a, b in zip(pontos_tracos, pontos_tracos[1:])
-        if not any(a.x < x < b.x for x in barras)
-    ]
-    limiar_letra = _limiar_entre_letras(espacos, referencia)
-    limiar_palavra = max(3 * limiar_letra, 6 * referencia)
+    espacos_linha = _espacos_da_linha(linha)
+    if limiar_letra is None:
+        limiar_letra = _limiar_entre_letras(espacos_linha, referencia)
+
+    # Sem "/", uma quebra de palavra precisa ser bem maior que os espaços
+    # entre letras desta linha: numa palavra só ("PAZ"), os espaços entre
+    # letras são parecidos e nenhum deles vira quebra.
+    entre_letras = [e for e in espacos_linha if e > limiar_letra]
+    limiar_palavra = max(
+        3 * limiar_letra,
+        6 * referencia,
+        2.2 * float(np.median(entre_letras)) if len(entre_letras) >= 2 else 0.0,
+    )
 
     palavras: list[list[str]] = []
     letras: list[str] = []
@@ -160,8 +209,9 @@ def codigos_para_morse(palavras: list[list[str]]) -> str:
 def decodificar_linha(
     linha: list[SimboloPosicionado],
     referencia: float,
+    limiar_letra: float | None = None,
 ) -> dict:
-    palavras = separar_letras(linha, referencia)
+    palavras = separar_letras(linha, referencia, limiar_letra)
     return {
         "morse": codigos_para_morse(palavras),
         "texto": codigos_para_texto(palavras),

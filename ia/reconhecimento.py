@@ -30,7 +30,11 @@ import numpy as np
 import torch
 from PIL import Image
 
-from ia.decodificacao import SimboloPosicionado, decodificar_linha
+from ia.decodificacao import (
+    SimboloPosicionado,
+    decodificar_linha,
+    estimar_limiar_letra,
+)
 from ia.modelo import ModeloCodeVision
 from ia.preprocessamento import PreprocessadorCodeVision
 from ia.segmentacao import (
@@ -389,7 +393,8 @@ class ReconhecedorCodeVision:
         segmentacao = segmentar(imagem_cinza)
 
         resultados = []
-        linhas = []
+        por_linha: list[tuple[int, list[SimboloPosicionado]]] = []
+        diametros_ponto: list[int] = []
 
         for numero_linha, componentes in enumerate(segmentacao.linhas):
             posicionados = []
@@ -421,6 +426,10 @@ class ReconhecedorCodeVision:
                         classificacao,
                         alongamento(segmentacao, componente),
                     )
+                    if classificacao["classe"] == 1:
+                        diametros_ponto.append(
+                            max(componente.largura, componente.altura)
+                        )
                     if classificacao["classe"] != 0:
                         posicionados.append(
                             SimboloPosicionado(
@@ -440,13 +449,29 @@ class ReconhecedorCodeVision:
                     }
                 )
 
-            if sum(1 for s in posicionados if s.simbolo != "/") == 0:
-                continue
+            if any(s.simbolo != "/" for s in posicionados):
+                por_linha.append((numero_linha, posicionados))
 
-            decodificada = decodificar_linha(
-                posicionados, segmentacao.espessura
-            )
-            linhas.append({"linha": numero_linha, **decodificada})
+        # O espaço entre letras é estimado com a página inteira: a mesma
+        # pessoa espaça igual em todas as linhas.
+        diametro_ponto = (
+            float(np.median(diametros_ponto))
+            if diametros_ponto
+            else 2.0 * segmentacao.espessura
+        )
+        limiar_letra = estimar_limiar_letra(
+            [posicionados for _, posicionados in por_linha], diametro_ponto
+        )
+
+        linhas = [
+            {
+                "linha": numero_linha,
+                **decodificar_linha(
+                    posicionados, segmentacao.espessura, limiar_letra
+                ),
+            }
+            for numero_linha, posicionados in por_linha
+        ]
 
         simbolos_reconhecidos = [
             resultado["simbolo"]
