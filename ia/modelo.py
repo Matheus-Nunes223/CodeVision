@@ -28,8 +28,11 @@ import math
 from pathlib import Path
 from typing import Any
 
+import copy
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 
@@ -296,11 +299,71 @@ class ModeloCodeVision:
             pin_memory=self.dispositivo.type == "cuda",
         )
 
+    @staticmethod
+    def _aumentar_lote(imagens: torch.Tensor) -> torch.Tensor:
+        """
+        Aumento de dados leve para um lote (N, 1, 32, 32).
+
+        Aplica rotação (±8°), escala (0,9 a 1,1), translação (±8%),
+        redução de resolução (metade do lote), variação de
+        contraste/brilho e ruído gaussiano. Não faz espelhamento.
+        O fundo é replicado nas bordas.
+        """
+        n = imagens.size(0)
+        dispositivo = imagens.device
+
+        angulo = (torch.rand(n, device=dispositivo) - 0.5) * 2 * math.radians(8)
+        escala = 0.9 + 0.2 * torch.rand(n, device=dispositivo)
+        tx = (torch.rand(n, device=dispositivo) - 0.5) * 0.16
+        ty = (torch.rand(n, device=dispositivo) - 0.5) * 0.16
+
+        cos = torch.cos(angulo) / escala
+        sen = torch.sin(angulo) / escala
+
+        teta = torch.zeros(n, 2, 3, device=dispositivo)
+        teta[:, 0, 0] = cos
+        teta[:, 0, 1] = -sen
+        teta[:, 0, 2] = tx
+        teta[:, 1, 0] = sen
+        teta[:, 1, 1] = cos
+        teta[:, 1, 2] = ty
+
+        grade = F.affine_grid(teta, imagens.shape, align_corners=False)
+        saida = F.grid_sample(
+            imagens,
+            grade,
+            padding_mode="border",
+            align_corners=False,
+        )
+
+        # Baixa resolução: metade do lote é reduzida a 5-16 px e ampliada
+        # de volta, como um símbolo pequeno em foto de celular comprimida.
+        reduzir = torch.rand(n, device=dispositivo) < 0.5
+        if reduzir.any():
+            lado = int(torch.randint(5, 17, (1,)).item())
+            pequenas = F.interpolate(saida[reduzir], size=(lado, lado), mode="area")
+            saida[reduzir] = F.interpolate(
+                pequenas,
+                size=imagens.shape[-2:],
+                mode="bilinear",
+                align_corners=False,
+            )
+
+        # Contraste e cor do fundo variam bastante entre papéis e luzes.
+        contraste = (0.4 + 0.8 * torch.rand(n, 1, 1, 1, device=dispositivo))
+        brilho = (torch.rand(n, 1, 1, 1, device=dispositivo) - 0.5) * 0.4
+        saida = (saida - 0.5) * contraste + 0.5 + brilho
+
+        saida = saida + 0.02 * torch.randn_like(saida)
+
+        return saida.clamp_(0.0, 1.0)
+
     def _executar_epoca(
         self,
         carregador: DataLoader,
         criterio: nn.Module,
         otimizador: torch.optim.Optimizer | None = None,
+        aumentar: bool = False,
     ) -> dict[str, float]:
         """Executa uma época de treinamento ou avaliação."""
 
@@ -330,6 +393,9 @@ class ModeloCodeVision:
 
                 if treinando:
                     otimizador.zero_grad(set_to_none=True)
+
+                    if aumentar:
+                        imagens_lote = self._aumentar_lote(imagens_lote)
 
                 logits = self.modelo(imagens_lote)
                 perda = criterio(logits, rotulos_lote)
@@ -369,9 +435,22 @@ class ModeloCodeVision:
         dados_validacao: tuple[Any, Any] | None = None,
         semente: int | None = 42,
         verbose: bool = True,
+        aumentar_dados: bool = True,
+        paciencia: int | None = 6,
     ) -> list[dict[str, float]]:
         """
         Treina a CNN e retorna o histórico das métricas.
+
+        Com dados de validação, o treino:
+            - reduz a taxa de aprendizado quando a perda de validação
+              estagna (ReduceLROnPlateau);
+            - interrompe após `paciencia` épocas sem melhora
+              (None desativa);
+            - restaura os pesos da melhor época (menor perda de
+              validação) ao final.
+
+        aumentar_dados:
+            Aplica aumento de dados leve apenas ao treinamento.
 
         imagens:
             Tensor (N, 1, 32, 32), com pixels entre 0 e 1.
@@ -441,20 +520,38 @@ class ModeloCodeVision:
 
         criterio = nn.CrossEntropyLoss()
 
-        otimizador = torch.optim.Adam(
+        otimizador = torch.optim.AdamW(
             self.modelo.parameters(),
             lr=float(taxa_aprendizado),
             weight_decay=float(peso_decay),
         )
 
+        agendador = None
+
+        if carregador_validacao is not None:
+            agendador = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                otimizador,
+                mode="min",
+                factor=0.5,
+                patience=2,
+                min_lr=1e-6,
+            )
+
         historico: list[dict[str, float]] = []
+        melhor_perda = float("inf")
+        melhor_estado = None
+        melhor_epoca = 0
+        epocas_sem_melhora = 0
+        epocas_executadas = 0
 
         for epoca in range(1, epocas + 1):
             metricas_treino = self._executar_epoca(
                 carregador_treino,
                 criterio,
                 otimizador,
+                aumentar=aumentar_dados,
             )
+            epocas_executadas = epoca
 
             registro = {
                 "epoca": float(epoca),
@@ -470,6 +567,19 @@ class ModeloCodeVision:
 
                 registro["perda_validacao"] = metricas_val["perda"]
                 registro["acuracia_validacao"] = metricas_val["acuracia"]
+
+                if agendador is not None:
+                    agendador.step(metricas_val["perda"])
+
+                if metricas_val["perda"] < melhor_perda - 1e-6:
+                    melhor_perda = metricas_val["perda"]
+                    melhor_epoca = epoca
+                    epocas_sem_melhora = 0
+                    melhor_estado = copy.deepcopy(
+                        self.modelo.state_dict()
+                    )
+                else:
+                    epocas_sem_melhora += 1
 
             historico.append(registro)
 
@@ -491,9 +601,30 @@ class ModeloCodeVision:
 
                 print(mensagem)
 
+            if (
+                paciencia is not None
+                and carregador_validacao is not None
+                and epocas_sem_melhora >= paciencia
+            ):
+                if verbose:
+                    print(
+                        f"Parada antecipada na época {epoca}: "
+                        f"sem melhora há {paciencia} épocas."
+                    )
+                break
+
+        if melhor_estado is not None:
+            self.modelo.load_state_dict(melhor_estado)
+
+            if verbose:
+                print(
+                    f"Pesos restaurados da melhor época: {melhor_epoca} "
+                    f"(perda de validação {melhor_perda:.4f})."
+                )
+
         self.modelo.eval()
         self.treinado = True
-        self.epocas_treinadas += epocas
+        self.epocas_treinadas += epocas_executadas
         self.historico_treinamento = historico
 
         return historico

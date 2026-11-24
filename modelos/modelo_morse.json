@@ -1,0 +1,12 @@
+{
+  "versao_formato": 1,
+  "arquitetura": "RedeNeuralMorse",
+  "tamanho_imagem": 32,
+  "canais_entrada": 1,
+  "classes": {
+    "0": "fundo",
+    "1": "ponto",
+    "2": "traco"
+  },
+  "epocas_treinadas": 11
+}

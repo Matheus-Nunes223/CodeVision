@@ -61,3 +61,6 @@ cython_debug/
 .DS_Store
 Thumbs.db
 tempCodeRunnerFile.py
+
+# Páginas sintéticas: recriadas por python -m ia.gerar_manuscrito
+fotos_sinteticas/

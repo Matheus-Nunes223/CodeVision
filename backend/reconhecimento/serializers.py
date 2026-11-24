@@ -142,17 +142,24 @@ class SimboloReconhecidoSerializer(serializers.Serializer):
 
 class ResultadoDetalhadoSerializer(serializers.Serializer):
     indice = serializers.IntegerField(min_value=0)
+    # Linha de texto da imagem à qual o símbolo pertence.
+    linha = serializers.IntegerField(min_value=0, required=False)
     coordenadas = CoordenadasSimboloSerializer()
     area = serializers.IntegerField(min_value=1)
-    classe = serializers.IntegerField(min_value=0, max_value=2)
+    # Separadores "/" não passam pela CNN: classe e confiança nulas.
+    classe = serializers.IntegerField(
+        min_value=0, max_value=2, allow_null=True
+    )
     nome_classe = serializers.CharField()
     simbolo = serializers.CharField(allow_null=True, allow_blank=True)
-    confianca = serializers.FloatField(min_value=0.0, max_value=1.0)
+    confianca = serializers.FloatField(
+        min_value=0.0, max_value=1.0, allow_null=True
+    )
     probabilidades = serializers.DictField(
         child=serializers.FloatField(min_value=0.0, max_value=1.0),
     )
     status = serializers.ChoiceField(
-        choices=("fundo", "baixa_confianca", "reconhecido"),
+        choices=("fundo", "baixa_confianca", "reconhecido", "separador"),
     )
 
 

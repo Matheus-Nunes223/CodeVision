@@ -289,7 +289,9 @@ body {
   word-break: break-all;
 }
  
-.decoded { margin: 10px 0 0; font-size: 16px; }
+/* Uma linha da foto por linha da tela. */
+.sequence { white-space: pre-line; }
+.decoded { margin: 10px 0 0; font-size: 16px; white-space: pre-line; }
  
 .symbols {
   display: flex;

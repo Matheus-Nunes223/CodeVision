@@ -278,9 +278,12 @@
       pick(data, ["simbolos", "symbols", "resultados", "predicoes", "predictions", "deteccoes"])
     );
     const sequence =
-      pick(data, ["sequencia", "sequence", "morse", "codigo", "code"]) ??
+      // "texto_reconhecido" é o Morse já separado em letras e palavras ("/").
+      pick(data, ["texto_reconhecido", "sequencia", "sequence", "morse", "codigo", "code"]) ??
       (symbols.length ? symbols.map((s) => s.symbol).join("") : "");
-    const decoded = pick(data, ["texto", "mensagem", "message", "text", "texto_decodificado", "decodificado"]);
+    // "mensagem_decodificada" vem antes: na API do CodeVision, "mensagem" é
+    // só o aviso de status ("Reconhecimento visual concluído.").
+    const decoded = pick(data, ["mensagem_decodificada", "texto_decodificado", "decodificado", "texto", "text", "message"]);
  
     el.sequence.textContent = sequence || "(nenhum símbolo reconhecido)";
  

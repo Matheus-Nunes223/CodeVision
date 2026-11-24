@@ -1,0 +1,37 @@
+# Mensagens escritas à mão nas fotos reais (gabarito do autor das fotos).
+# Para medir uma foto, acrescente em gabarito.txt:  nome_da_foto.jpg: MENSAGEM
+# (várias linhas de texto da mesma foto separadas por "|").
+
+# Lista 1: frases
+OLA MUNDO
+BOM DIA
+BOA NOITE
+OBRIGADO
+SOS
+EU GOSTO DE ESTUDAR
+QUE HORAS SAO
+ESTOU CHEGANDO
+VAMOS ESTUDAR REDES
+A PRATICA LEVA A PERFEICAO
+PRECISO DE AJUDA
+TUDO BEM COM VOCE
+ENCONTRO AS 15 HORAS
+MENSAGEM RECEBIDA
+FIQUE EM CASA
+O GATO ESTA NO TELHADO
+CHOVE MUITO HOJE
+ATENCAO PERIGO
+FELIZ ANIVERSARIO
+ATE LOGO
+
+# Lista 2: palavras
+REDES
+LA
+SIM
+NAO
+CASA
+LUZ
+AGUA
+PAZ
+DIA
+AMOR
