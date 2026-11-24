@@ -400,6 +400,22 @@ def _separar_por_altura(
     return partes
 
 
+def _parece_poeira(simbolos: list[Componente], d: float) -> bool:
+    """
+    Linha de poeira (pintas na borda da folha): manchas pequenas E
+    espalhadas de forma irregular. Cada condição sozinha também aparece
+    em texto real (caneta fina; palavras sem "/"), as duas juntas não.
+    """
+    area = float(np.median([c.area for c in simbolos]))
+    ordenados = sorted(simbolos, key=lambda c: c.x)
+    espacos = np.array([b.x - a.direita for a, b in zip(ordenados, ordenados[1:])])
+    espacos = espacos[espacos > 0]
+    if len(espacos) < 2:
+        return False
+    irregular = espacos.max() / np.median(espacos) > 7
+    return area < 0.8 * d * d and irregular
+
+
 def _limpar_linha(
     linha: list[Componente],
     d: float,
@@ -428,6 +444,9 @@ def _limpar_linha(
 
     simbolos = [c for c in linha if not c.barra]
     if len(simbolos) < 2:
+        return None
+
+    if _parece_poeira(simbolos, d):
         return None
 
     # Texto é quase horizontal: os centros ficam numa faixa estreita em
