@@ -1,0 +1,9 @@
+              precision    recall  f1-score   support
+
+       fundo      1.000     1.000     1.000       302
+       ponto      1.000     1.000     1.000        77
+       traco      1.000     1.000     1.000        74
+
+    accuracy                          1.000       453
+   macro avg      1.000     1.000     1.000       453
+weighted avg      1.000     1.000     1.000       453

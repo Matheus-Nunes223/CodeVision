@@ -1,27 +1,3 @@
-"""
-Reconhecimento visual de símbolos Morse do CodeVision.
-
-Responsabilidades:
-- Receber imagens completas ou recortes individuais.
-- Localizar componentes visuais que possam representar símbolos.
-- Preparar os recortes com PreprocessadorCodeVision.
-- Classificar os recortes usando ModeloCodeVision.
-- Preservar coordenadas, ordem e confiança das classificações.
-- Decodificar cada linha de texto em letras e palavras.
-
-Dependências do projeto:
-- ia/modelo.py
-- ia/preprocessamento.py
-- ia/segmentacao.py
-- ia/decodificacao.py
-
-Dependências externas:
-- opencv-python
-- numpy
-- pillow
-- torch
-"""
-
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -54,39 +30,21 @@ CLASSES = {
     2: "traco",
 }
 
-# Alongamento (comprimento ÷ espessura) a partir do qual o formato é
-# inequívoco. Entre os dois limites, vale a decisão da CNN.
 ALONGAMENTO_PONTO = 1.5
 ALONGAMENTO_TRACO = 2.5
 
 
 class ErroReconhecimento(Exception):
-    """Erro específico durante o reconhecimento visual."""
+    pass
 
 
 class ReconhecedorCodeVision:
-    """
-    Localiza e classifica possíveis símbolos Morse em imagens.
-
-    A segmentação (ia/segmentacao.py) trata fotos reais: corrige
-    iluminação e inclinação, ignora o que está fora do papel e remove
-    as pautas do caderno. A CNN decide ponto, traço ou fundo, e a
-    decodificação separa letras e palavras pelos espaços e barras "/".
-    """
-
     def __init__(
         self,
         modelo: ModeloCodeVision,
         preprocessador: Optional[PreprocessadorCodeVision] = None,
         confianca_minima: float = 0.60,
     ):
-        """
-        Args:
-            modelo: instância de ModeloCodeVision com pesos carregados.
-            preprocessador: instância do preprocessador. Se omitida,
-                uma instância padrão será criada.
-            confianca_minima: confiança mínima para aceitar uma previsão.
-        """
         if not isinstance(modelo, ModeloCodeVision):
             raise TypeError(
                 "modelo deve ser uma instância de ModeloCodeVision."
@@ -108,7 +66,6 @@ class ReconhecedorCodeVision:
 
     @staticmethod
     def _carregar_imagem(caminho: CaminhoImagem) -> Image.Image:
-        """Carrega uma imagem de arquivo sem perder a orientação EXIF."""
         if not isinstance(caminho, (str, Path)):
             raise TypeError("O caminho deve ser uma string ou Path.")
 
@@ -139,7 +96,6 @@ class ReconhecedorCodeVision:
 
     @staticmethod
     def _validar_imagem_array(imagem: np.ndarray) -> np.ndarray:
-        """Valida e converte um array de imagem para uint8."""
         if not isinstance(imagem, np.ndarray):
             raise TypeError("A imagem deve ser um array NumPy.")
 
@@ -189,7 +145,6 @@ class ReconhecedorCodeVision:
         self,
         imagem: Union[Image.Image, np.ndarray],
     ) -> np.ndarray:
-        """Converte a entrada para um array de tons de cinza."""
         if isinstance(imagem, Image.Image):
             imagem_pil = imagem.convert("L")
             array = np.asarray(imagem_pil)
@@ -202,8 +157,6 @@ class ReconhecedorCodeVision:
             elif array.shape[2] == 4:
                 array = cv2.cvtColor(array, cv2.COLOR_RGBA2GRAY)
             else:
-                # Arrays recebidos diretamente pelo módulo são
-                # interpretados como RGB, não BGR.
                 array = cv2.cvtColor(array, cv2.COLOR_RGB2GRAY)
 
         else:
@@ -223,14 +176,6 @@ class ReconhecedorCodeVision:
         classificacao: dict[str, Any],
         razao: float,
     ) -> dict[str, Any]:
-        """
-        Confere ponto/traço da CNN com o alongamento do símbolo.
-
-        Em símbolos muito pequenos (fotos de longe ou comprimidas) a CNN
-        pode confundir ponto e traço. Quando o formato é inequívoco, ele
-        prevalece; a correção fica registrada em "corrigido_por_formato".
-        O fundo continua sendo decidido só pela CNN.
-        """
         resultado = {
             **classificacao,
             "alongamento": round(float(razao), 2),
@@ -263,10 +208,6 @@ class ReconhecedorCodeVision:
         componente: Componente,
         segmentacao: ResultadoSegmentacao,
     ) -> dict[str, int]:
-        """
-        Converte a caixa da imagem de trabalho (reduzida e endireitada)
-        para a imagem original enviada.
-        """
         altura, largura = segmentacao.imagem.shape
         matriz = cv2.getRotationMatrix2D(
             (largura / 2, altura / 2), segmentacao.angulo, 1.0
@@ -299,8 +240,6 @@ class ReconhecedorCodeVision:
         self,
         recorte: np.ndarray,
     ) -> dict[str, Any]:
-        """Prepara e classifica um recorte individual."""
-        # PIL, como no treino: evita a inversão automática de arrays.
         tensor = self.preprocessador.preparar_simbolo(
             Image.fromarray(recorte)
         )
@@ -334,7 +273,6 @@ class ReconhecedorCodeVision:
                 "A confiança retornada deve estar entre 0 e 1."
             )
 
-        # O fundo não representa um símbolo da mensagem.
         if classe == 0:
             simbolo_final = None
             status = "fundo"
@@ -358,11 +296,6 @@ class ReconhecedorCodeVision:
         self,
         imagem: Union[Image.Image, np.ndarray],
     ) -> dict[str, Any]:
-        """
-        Reconhece um único recorte que já contenha um ponto ou traço.
-
-        Não realiza segmentação da imagem.
-        """
         resultado = self._classificar_recorte(
             self._obter_imagem_cinza(imagem)
         )
@@ -373,22 +306,6 @@ class ReconhecedorCodeVision:
         self,
         imagem: Union[Image.Image, np.ndarray],
     ) -> dict[str, Any]:
-        """
-        Localiza, classifica e decodifica os símbolos de uma imagem.
-
-        Args:
-            imagem: imagem PIL ou array NumPy (RGB ou cinza).
-
-        Returns:
-            Dicionário com os resultados de cada símbolo, as linhas de
-            texto encontradas (Morse e texto decodificado) e a mensagem
-            completa, uma linha de texto por linha da imagem.
-
-        Observação:
-            Na decodificação, um símbolo abaixo da confiança mínima entra
-            com a classe mais provável (ponto ou traço) e fica marcado
-            como "baixa_confianca" nos resultados.
-        """
         imagem_cinza = self._obter_imagem_cinza(imagem)
         segmentacao = segmentar(imagem_cinza)
 
@@ -444,7 +361,12 @@ class ReconhecedorCodeVision:
                         "indice": len(resultados),
                         "linha": numero_linha,
                         "coordenadas": coordenadas,
-                        "area": int(componente.area / segmentacao.escala**2),
+                        "area": max(
+                            1,
+                            round(
+                                componente.area / segmentacao.escala**2
+                            ),
+                        ),
                         **classificacao,
                     }
                 )
@@ -452,8 +374,6 @@ class ReconhecedorCodeVision:
             if any(s.simbolo != "/" for s in posicionados):
                 por_linha.append((numero_linha, posicionados))
 
-        # O espaço entre letras é estimado com a página inteira: a mesma
-        # pessoa espaça igual em todas as linhas.
         diametro_ponto = (
             float(np.median(diametros_ponto))
             if diametros_ponto
@@ -498,6 +418,5 @@ class ReconhecedorCodeVision:
         self,
         caminho: CaminhoImagem,
     ) -> dict[str, Any]:
-        """Carrega um arquivo e reconhece os símbolos encontrados."""
         imagem = self._carregar_imagem(caminho)
         return self.reconhecer_imagem(imagem)
