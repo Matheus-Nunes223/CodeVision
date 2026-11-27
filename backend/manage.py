@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-"""Utilitário de linha de comando do Django para tarefas administrativas."""
 
 import os
 import sys
@@ -7,10 +6,8 @@ from pathlib import Path
 
 
 def main():
-    """Executa comandos administrativos do Django."""
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
-    # Adiciona a raiz do projeto ao caminho de importação do Python.
     raiz_projeto = Path(__file__).resolve().parent.parent
     sys.path.insert(0, str(raiz_projeto))
 

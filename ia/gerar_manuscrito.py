@@ -1,29 +1,3 @@
-"""
-Gera o dataset sintético de Morse "manuscrito".
-
-Para cada página gerada (ia/gerador_manuscrito.py):
-
-    - salva a foto (JPG) e o gabarito (texto de cada linha e caixa de
-      cada símbolo) em fotos_sinteticas/{treino,teste}/; a pasta não vai
-      para o git, porque a mesma semente recria as mesmas páginas;
-    - nas páginas de treino, passa a foto pela mesma segmentação usada
-      pelo aplicativo e rotula cada componente encontrado pelo gabarito:
-        * componente sobre um único ponto/traço -> ponto/traco;
-        * componente que não corresponde a nenhum símbolo -> fundo
-          (restos de pauta, sombras, espiral: exemplos negativos reais);
-        * componente ambíguo (pedaço de símbolo, dois símbolos juntos)
-          -> descartado.
-      Os recortes vão para datasets/{ponto,traco,fundo}/ como
-      'manuscrito_<pagina>_<n>.png' (todos os recortes de uma página
-      ficam no mesmo conjunto na divisão treino/validação).
-
-As páginas de teste não geram recortes: servem para medir o sistema
-completo com ia/avaliar_fotos.py.
-
-Uso (a partir de CodeVision/):
-    python -m ia.gerar_manuscrito --paginas 400 --paginas-teste 100
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -54,7 +28,6 @@ def _para_trabalho(
     segmentacao: ResultadoSegmentacao,
     caixa: tuple[int, int, int, int],
 ) -> tuple[float, float, float, float]:
-    """Converte uma caixa da foto original para a imagem de trabalho."""
     altura, largura = segmentacao.imagem.shape
     matriz = cv2.getRotationMatrix2D(
         (largura / 2, altura / 2), segmentacao.angulo, 1.0
@@ -73,7 +46,6 @@ def _rotular(
     segmentacao: ResultadoSegmentacao,
     pagina: PaginaSintetica,
 ) -> tuple[list[tuple[Componente, str]], Counter]:
-    """Associa componentes da segmentação aos símbolos do gabarito."""
     caixas = []
     for simbolo in pagina.simbolos:
         x0, y0, x1, y1 = _para_trabalho(segmentacao, simbolo.caixa)
@@ -146,14 +118,10 @@ def gerar(
         gabarito = {}
 
         for numero in range(quantidade):
-            # Um sorteador fixo por página: a mesma semente gera sempre as
-            # mesmas páginas, mesmo que a segmentação mude.
             semente_pagina = zlib.crc32(f"{semente}-{divisao}-{numero}".encode())
             gerador = random.Random(semente_pagina)
             pagina = gerar_pagina(gerador)
             nome = f"pagina_{numero:04d}.jpg"
-            # A página já passou por compressão JPEG no gerador; qualidade
-            # alta aqui só evita uma segunda perda.
             cv2.imwrite(str(pasta / nome), pagina.imagem, [cv2.IMWRITE_JPEG_QUALITY, 95])
             gabarito[nome] = {
                 "linhas": pagina.linhas,

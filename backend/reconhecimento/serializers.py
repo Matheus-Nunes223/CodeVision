@@ -1,18 +1,7 @@
-"""
-Serializadores da API do CodeVision.
-
-Responsáveis por validar os dados recebidos e padronizar
-as respostas do sistema de reconhecimento de imagens.
-"""
-
 from rest_framework import serializers
 
 
-# ============================================================
-# CONSTANTES
-# ============================================================
-
-TAMANHO_MAXIMO_IMAGEM = 10 * 1024 * 1024  # 10 MB
+TAMANHO_MAXIMO_IMAGEM = 10 * 1024 * 1024
 
 FORMATOS_IMAGEM_PERMITIDOS = {
     "JPEG",
@@ -22,17 +11,7 @@ FORMATOS_IMAGEM_PERMITIDOS = {
 }
 
 
-# ============================================================
-# SERIALIZADOR DE ENTRADA
-# ============================================================
-
 class ImagemReconhecimentoSerializer(serializers.Serializer):
-    """
-    Valida a imagem enviada pelo usuário para reconhecimento.
-
-    Campo esperado:
-        imagem: arquivo de imagem enviado por multipart/form-data.
-    """
 
     imagem = serializers.ImageField(
         required=True,
@@ -45,17 +24,12 @@ class ImagemReconhecimentoSerializer(serializers.Serializer):
     )
 
     def validate_imagem(self, imagem):
-        """
-        Verifica o tamanho, o formato e as dimensões da imagem.
-        """
 
-        # Verifica o tamanho do arquivo.
         if imagem.size > TAMANHO_MAXIMO_IMAGEM:
             raise serializers.ValidationError(
                 "A imagem não pode ultrapassar 10 MB."
             )
 
-        # Verifica o formato detectado pelo Pillow.
         formato = getattr(imagem, "image", None)
 
         if formato is None:
@@ -71,7 +45,6 @@ class ImagemReconhecimentoSerializer(serializers.Serializer):
                 f"Formato não permitido. Formatos aceitos: {formatos}."
             )
 
-        # Verifica as dimensões da imagem.
         largura, altura = imagem.image.size
 
         if largura <= 0 or altura <= 0:
@@ -79,7 +52,6 @@ class ImagemReconhecimentoSerializer(serializers.Serializer):
                 "A imagem possui dimensões inválidas."
             )
 
-        # Limita dimensões excessivas para evitar processamento abusivo.
         if largura > 10000 or altura > 10000:
             raise serializers.ValidationError(
                 "As dimensões da imagem não podem ultrapassar "
@@ -88,10 +60,6 @@ class ImagemReconhecimentoSerializer(serializers.Serializer):
 
         return imagem
 
-
-# ============================================================
-# SERIALIZADOR DE SAÍDA
-# ============================================================
 
 class CoordenadasSimboloSerializer(serializers.Serializer):
     x = serializers.IntegerField(min_value=0)
@@ -106,9 +74,6 @@ class DimensoesImagemSerializer(serializers.Serializer):
 
 
 class SimboloReconhecidoSerializer(serializers.Serializer):
-    """
-    Representa um símbolo identificado pelo modelo de IA.
-    """
 
     simbolo = serializers.CharField(
         required=True,
@@ -142,11 +107,9 @@ class SimboloReconhecidoSerializer(serializers.Serializer):
 
 class ResultadoDetalhadoSerializer(serializers.Serializer):
     indice = serializers.IntegerField(min_value=0)
-    # Linha de texto da imagem à qual o símbolo pertence.
     linha = serializers.IntegerField(min_value=0, required=False)
     coordenadas = CoordenadasSimboloSerializer()
     area = serializers.IntegerField(min_value=1)
-    # Separadores "/" não passam pela CNN: classe e confiança nulas.
     classe = serializers.IntegerField(
         min_value=0, max_value=2, allow_null=True
     )
@@ -164,9 +127,6 @@ class ResultadoDetalhadoSerializer(serializers.Serializer):
 
 
 class ResultadoReconhecimentoSerializer(serializers.Serializer):
-    """
-    Estrutura a resposta completa do reconhecimento de uma imagem.
-    """
 
     sucesso = serializers.BooleanField(
         required=True,

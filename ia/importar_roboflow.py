@@ -1,32 +1,3 @@
-"""
-Importa um dataset de fotos reais exportado do Roboflow (formato COCO).
-
-Cada foto contém um ou mais símbolos anotados (classes 'dash' e 'dots').
-O script recorta cada símbolo e também recortes de fundo (papel vazio)
-da mesma foto, longe de todos os símbolos anotados.
-
-Destino:
-    - Divisão 'train' do Roboflow -> datasets/{ponto,traco,fundo}
-      (usada no treinamento).
-    - Divisões 'valid' e 'test' -> datasets_teste/{ponto,traco,fundo}
-      (teste independente: nunca entra no treinamento).
-
-Os arquivos se chamam 'real_<fonte>_<foto>_<indice>.png':
-    - 'real_' marca exemplos reais (o treinamento os repete mais vezes);
-    - '<fonte>' identifica a importação (--fonte), permitindo importar
-      vários datasets sem que um apague o outro;
-    - '<foto>' mantém todos os recortes de uma foto no mesmo conjunto.
-
-Reexecutar o script com a mesma --fonte substitui a importação anterior
-dessa fonte (apaga apenas os arquivos 'real_<fonte>_*'). Antes de gravar,
-o script verifica que nenhuma foto está no treino e no teste ao mesmo
-tempo.
-
-Uso (a partir de CodeVision/):
-    python -m ia.importar_roboflow caminho/dataset.coco.zip
-    python -m ia.importar_roboflow outro.coco.zip --fonte colegas
-"""
-
 import argparse
 import io
 import json
@@ -52,17 +23,15 @@ Caixa = list[float]
 
 
 class ErroImportacao(Exception):
-    """Erro que impede uma importação segura."""
+    pass
 
 
 def nome_da_foto(arquivo: str) -> str:
-    """Remove o sufixo '_jpg.rf.<hash>' que o Roboflow acrescenta."""
     base = Path(arquivo).name
     return re.sub(r"_(jpg|jpeg|png)\.rf\..*$", "", base, flags=re.I)
 
 
 def reduzir(imagem: Image.Image) -> Image.Image:
-    """Limita o lado maior; o treinamento redimensiona para 32x32."""
     imagem = imagem.copy()
     imagem.thumbnail((LADO_MAXIMO, LADO_MAXIMO), Image.Resampling.LANCZOS)
     return imagem
@@ -83,7 +52,6 @@ def recortar_simbolo(foto: Image.Image, caixa: Caixa) -> Image.Image:
 
 
 def _area_proibida(caixa: Caixa) -> tuple[float, float, float, float]:
-    """A caixa ampliada em 50% da sua dimensão para cada lado."""
     x, y, largura, altura = caixa
     return (
         x - 0.5 * largura,
@@ -114,11 +82,6 @@ def recortes_de_fundo(
     quantidade: int,
     gerador: random.Random,
 ) -> list[Image.Image]:
-    """
-    Sorteia recortes sem símbolos, com tamanho parecido com o deles.
-
-    Os recortes evitam todas as caixas anotadas na foto.
-    """
     proibidas = [_area_proibida(caixa) for caixa in caixas]
     saidas = []
 
@@ -141,7 +104,6 @@ def recortes_de_fundo(
         recorte = foto.crop((x0, y0, x0 + c_larg, y0 + c_alt))
         pixels = np.asarray(recorte, dtype=np.float32)
 
-        # Descarta recortes com tinta não anotada, bordas ou sombras.
         contraste = np.percentile(pixels, 50) - np.percentile(pixels, 1)
         if contraste > CONTRASTE_MAXIMO_FUNDO:
             continue
@@ -152,11 +114,6 @@ def recortes_de_fundo(
 
 
 def ler_divisoes(zf: zipfile.ZipFile) -> list[dict]:
-    """
-    Lê as anotações e agrupa por imagem.
-
-    Retorna uma lista de fotos com destino, arquivo, foto_id e símbolos.
-    """
     fotos = []
 
     for divisao, destino in DIVISAO_PARA_DESTINO.items():
@@ -193,7 +150,6 @@ def ler_divisoes(zf: zipfile.ZipFile) -> list[dict]:
 
 
 def verificar_sobreposicao(fotos: list[dict]) -> None:
-    """Impede que a mesma foto (ou cópia dela) vá para treino e teste."""
     por_destino = defaultdict(set)
 
     for foto in fotos:
@@ -210,7 +166,6 @@ def verificar_sobreposicao(fotos: list[dict]) -> None:
 
 
 def limpar_importacao_anterior(raizes: list[Path], prefixo: str) -> int:
-    """Apaga apenas os arquivos gerados por esta fonte."""
     removidos = 0
 
     for raiz in raizes:
@@ -243,7 +198,6 @@ def importar(
     with zipfile.ZipFile(caminho_zip) as zf:
         fotos = ler_divisoes(zf)
 
-        # Valida tudo antes de apagar ou gravar qualquer arquivo.
         verificar_sobreposicao(fotos)
 
         removidos = limpar_importacao_anterior(
@@ -256,9 +210,6 @@ def importar(
             for raiz in raizes.values():
                 (raiz / pasta).mkdir(parents=True, exist_ok=True)
 
-        # Cópias do Roboflow de uma mesma foto compartilham o foto_id;
-        # o índice continua entre elas para que nenhum arquivo seja
-        # sobrescrito.
         proximo_indice: Counter = Counter()
 
         def salvar(imagem: Image.Image, raiz: Path, classe: str, foto_id: str):

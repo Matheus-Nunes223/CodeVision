@@ -1,18 +1,3 @@
-"""
-Avalia a estabilidade do treinamento do CodeVision em várias sementes.
-
-Cada semente muda a divisão treino/validação (por imagem-fonte) e a
-inicialização da rede. Se o desempenho se mantém em todas, a nota não
-depende de uma divisão favorável.
-
-Os dados são carregados uma única vez. Nenhum modelo é salvo, então o
-arquivo em modelos/ não é alterado.
-
-Uso (a partir de CodeVision/):
-    python -m ia.validar_sementes
-    python -m ia.validar_sementes --sementes 1 2 3 4 5 --epocas 40
-"""
-
 import argparse
 import statistics
 import time
@@ -34,7 +19,6 @@ def executar_semente(
     peso_decay: float,
     paciencia: int,
 ) -> dict:
-    """Treina e avalia uma semente, sem salvar o modelo."""
     treinador.semente = semente
 
     (
@@ -79,7 +63,6 @@ def executar_semente(
 
 
 def resumir(resultados: list[dict]) -> None:
-    """Imprime a tabela por semente e o resumo agregado."""
     print("\nResultados por semente:")
     print(
         f"  {'semente':>7} | {'acurácia':>8} | {'erros':>5} | "

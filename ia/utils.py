@@ -1,17 +1,3 @@
-"""
-Funções utilitárias do CodeVision.
-
-Responsabilidades:
-- Gerenciar caminhos e diretórios do projeto.
-- Validar arquivos e diretórios.
-- Validar parâmetros numéricos.
-- Salvar resultados de processamento em JSON.
-- Configurar o registro de eventos e erros.
-- Facilitar operações comuns dos módulos de IA.
-
-Este módulo não realiza treinamento, reconhecimento ou decodificação.
-"""
-
 import json
 import logging
 import math
@@ -24,19 +10,10 @@ Caminho = Union[str, Path]
 
 
 class ErroUtilitario(Exception):
-    """Erro específico das funções utilitárias do CodeVision."""
+    pass
 
 
 def obter_raiz_projeto() -> Path:
-    """
-    Retorna a raiz do projeto CodeVision.
-
-    Considera que este arquivo está em:
-        Codevision/ia/utils.py
-
-    Returns:
-        Caminho absoluto da raiz do projeto.
-    """
     return Path(__file__).resolve().parent.parent
 
 
@@ -44,18 +21,6 @@ def resolver_caminho(
     caminho: Caminho,
     relativo_a_raiz: bool = True,
 ) -> Path:
-    """
-    Converte um caminho em Path e, se necessário, resolve-o
-    relativamente à raiz do projeto.
-
-    Args:
-        caminho: caminho absoluto ou relativo.
-        relativo_a_raiz: se True, caminhos relativos partem da
-            raiz do projeto; se False, partem do diretório atual.
-
-    Returns:
-        Caminho absoluto normalizado.
-    """
     if not isinstance(caminho, (str, Path)):
         raise TypeError("O caminho deve ser uma string ou Path.")
 
@@ -74,16 +39,6 @@ def garantir_diretorio(
     caminho: Caminho,
     relativo_a_raiz: bool = True,
 ) -> Path:
-    """
-    Cria um diretório caso ele não exista.
-
-    Args:
-        caminho: caminho do diretório.
-        relativo_a_raiz: define como resolver caminhos relativos.
-
-    Returns:
-        Caminho absoluto do diretório criado ou existente.
-    """
     diretorio = resolver_caminho(caminho, relativo_a_raiz)
 
     if diretorio.exists() and not diretorio.is_dir():
@@ -106,18 +61,6 @@ def validar_arquivo(
     extensoes_permitidas: Optional[set[str]] = None,
     relativo_a_raiz: bool = True,
 ) -> Path:
-    """
-    Verifica se um arquivo existe e se sua extensão é permitida.
-
-    Args:
-        caminho: caminho do arquivo.
-        extensoes_permitidas: extensões aceitas, como {'.png', '.jpg'}.
-            Se None, qualquer extensão será aceita.
-        relativo_a_raiz: define como resolver caminhos relativos.
-
-    Returns:
-        Caminho absoluto do arquivo validado.
-    """
     arquivo = resolver_caminho(caminho, relativo_a_raiz)
 
     if not arquivo.exists():
@@ -160,14 +103,6 @@ def validar_numero(
     permitir_igual_minimo: bool = True,
     permitir_igual_maximo: bool = True,
 ) -> float:
-    """
-    Valida um valor numérico e verifica seus limites.
-
-    Rejeita valores booleanos, NaN e infinito.
-
-    Returns:
-        Valor convertido para float.
-    """
     if (
         not isinstance(valor, (int, float))
         or isinstance(valor, bool)
@@ -211,19 +146,6 @@ def salvar_json(
     caminho: Caminho,
     relativo_a_raiz: bool = True,
 ) -> Path:
-    """
-    Salva dados serializáveis em JSON, usando UTF-8.
-
-    Cria os diretórios necessários e rejeita NaN e infinito.
-
-    Args:
-        dados: dicionário, lista ou outro objeto serializável.
-        caminho: caminho do arquivo JSON.
-        relativo_a_raiz: define como resolver caminhos relativos.
-
-    Returns:
-        Caminho absoluto do arquivo salvo.
-    """
     arquivo = resolver_caminho(caminho, relativo_a_raiz)
 
     if arquivo.suffix.lower() != ".json":
@@ -257,12 +179,6 @@ def carregar_json(
     caminho: Caminho,
     relativo_a_raiz: bool = True,
 ) -> Any:
-    """
-    Carrega um arquivo JSON usando UTF-8.
-
-    Returns:
-        Estrutura Python representada pelo JSON.
-    """
     arquivo = validar_arquivo(
         caminho,
         extensoes_permitidas={".json"},
@@ -284,20 +200,6 @@ def configurar_logger(
     nivel: int = logging.INFO,
     arquivo_log: Optional[Caminho] = None,
 ) -> logging.Logger:
-    """
-    Configura um logger para mensagens de execução.
-
-    As mensagens são exibidas no terminal e, opcionalmente,
-    gravadas em um arquivo.
-
-    Args:
-        nome: nome do logger.
-        nivel: nível mínimo de registro.
-        arquivo_log: caminho opcional do arquivo de log.
-
-    Returns:
-        Logger configurado.
-    """
     if not isinstance(nome, str) or not nome.strip():
         raise ValueError("O nome do logger não pode estar vazio.")
 
@@ -308,8 +210,6 @@ def configurar_logger(
     logger.setLevel(nivel)
     logger.propagate = False
 
-    # Evita adicionar os mesmos handlers toda vez que a função
-    # for chamada.
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
         handler.close()
@@ -340,25 +240,12 @@ def configurar_logger(
 
 
 def obter_timestamp_utc() -> str:
-    """
-    Retorna a data e a hora atuais em UTC no formato ISO 8601.
-
-    Exemplo:
-        2026-10-28T12:30:00+00:00
-    """
     return datetime.now(timezone.utc).isoformat()
 
 
 def resumir_resultado_reconhecimento(
     resultado: dict[str, Any],
 ) -> dict[str, Any]:
-    """
-    Extrai um resumo simples do resultado de reconhecimento.
-
-    Espera o formato retornado por ReconhecedorCodeVision.
-
-    Não altera o resultado original e não realiza decodificação Morse.
-    """
     if not isinstance(resultado, dict):
         raise TypeError("O resultado deve ser um dicionário.")
 

@@ -1,18 +1,3 @@
-"""
-Prepara o dataset MorseCode (apple1986/MorseCodeImageClassify) para o
-treinamento do CodeVision.
-
-Cada imagem do ZIP original é uma letra Morse (512x512) com pontos
-(elipses) e traços (retângulos). O script segmenta os símbolos, recorta
-cada um e salva em datasets/{fundo,ponto,traco}.
-
-Uma imagem só é aceita se a geometria dos símbolos, lida da esquerda
-para a direita, coincidir com o código Morse da letra da pasta.
-
-Uso (na raiz do repositório):
-    python -m ia.preparar_datasets caminho/MorseCode.zip
-"""
-
 import argparse
 import random
 import re
@@ -42,7 +27,6 @@ LIMIAR_FUNDO = 245
 
 
 def decodificar_imagem(dados: bytes) -> np.ndarray:
-    """Decodifica bytes de PNG em RGB/cinza sem alterar a profundidade."""
     imagem = cv2.imdecode(
         np.frombuffer(dados, dtype=np.uint8), cv2.IMREAD_COLOR
     )
@@ -52,7 +36,6 @@ def decodificar_imagem(dados: bytes) -> np.ndarray:
 
 
 def mascara_simbolos(imagem_bgr: np.ndarray) -> np.ndarray:
-    """Máscara dos símbolos, robusta aos ruídos de pulso e gaussiano."""
     cinza = cv2.cvtColor(imagem_bgr, cv2.COLOR_BGR2GRAY)
     cinza = cv2.medianBlur(cinza, 5)
     mascara = (cinza < LIMIAR_FUNDO).astype(np.uint8) * 255
@@ -71,7 +54,6 @@ Caixa = tuple[int, int, int, int, int]
 
 
 def ordenar_leitura(caixas: list[Caixa]) -> list[Caixa]:
-    """Ordena por linha (centro vertical) e, dentro da linha, por x."""
     if not caixas:
         return []
     altura_media = sum(c[3] for c in caixas) / len(caixas)
@@ -86,7 +68,6 @@ def ordenar_leitura(caixas: list[Caixa]) -> list[Caixa]:
 
 
 def localizar_simbolos(mascara: np.ndarray) -> list[Caixa]:
-    """Retorna caixas (x, y, largura, altura, area) em ordem de leitura."""
     numero, _, estatisticas, _ = cv2.connectedComponentsWithStats(
         mascara, connectivity=8
     )
@@ -95,23 +76,20 @@ def localizar_simbolos(mascara: np.ndarray) -> list[Caixa]:
         for i in range(1, numero)
         if estatisticas[i][4] >= AREA_MINIMA
     ]
-    return ordenar_leitura(caixas)  # type: ignore[arg-type]
+    return ordenar_leitura(caixas)
 
 
 def tipo_da_caixa(caixa: Caixa) -> str:
-    """Elipse (ponto) preenche ~0,79 da caixa; retângulo (traço) ~1."""
     _, _, largura, altura, area = caixa
     return "-" if area / (largura * altura) >= RAZAO_PREENCHIMENTO_TRACO else "."
 
 
 def toca_borda(caixa: Caixa, forma: tuple[int, int]) -> bool:
-    """Indica se o símbolo está cortado pela borda da imagem."""
     x, y, largura, altura, _ = caixa
     return x <= 0 or y <= 0 or x + largura >= forma[1] or y + altura >= forma[0]
 
 
 def recortar(cinza: np.ndarray, caixa: Caixa) -> np.ndarray:
-    """Recorta a caixa com a mesma margem usada pelo reconhecedor."""
     x, y, largura, altura, _ = caixa
     altura_img, largura_img = cinza.shape
     return cinza[
@@ -127,7 +105,6 @@ def recortes_de_fundo(
     quantidade: int,
     gerador: random.Random,
 ) -> list[np.ndarray]:
-    """Sorteia recortes sem símbolo, com tamanhos parecidos aos reais."""
     altura_img, largura_img = cinza.shape
     livre = cv2.dilate(mascara, np.ones((15, 15), np.uint8)) == 0
     saidas = []

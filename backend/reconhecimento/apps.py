@@ -1,6 +1,4 @@
-"""
-Configuração da aplicação de reconhecimento do CodeVision.
-"""
+
 
 from django.apps import AppConfig
 

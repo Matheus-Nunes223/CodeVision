@@ -1,23 +1,3 @@
-"""
-Gerador de fotos sintéticas de Morse "manuscrito".
-
-Não existe dataset público de fotos de Morse escrito à mão, então este
-módulo desenha páginas que imitam essas fotos, com gabarito exato:
-
-    - papel branco, creme ou acinzentado, às vezes sobre uma mesa escura;
-    - caderno pautado (às vezes com espiral) ou folha lisa;
-    - traço de caneta irregular: pontos tortos ou em anel, traços
-      ondulados e inclinados, espessura e espaçamento de cada "pessoa";
-    - traços escritos acima da pauta e pontos sobre ela;
-    - barras "/" entre palavras (ou só um espaço maior);
-    - texto do verso aparecendo por transparência, lapiseira sobre a folha;
-    - sombra, iluminação desigual, rotação, perspectiva, desfoque,
-      ruído, baixa resolução e compressão JPEG.
-
-Cada página traz a mensagem de cada linha e a caixa de cada símbolo na
-imagem final. Ver ia/gerar_manuscrito.py para gerar os arquivos.
-"""
-
 from __future__ import annotations
 
 import math
@@ -47,39 +27,34 @@ PALAVRAS = (
 
 @dataclass
 class SimboloGabarito:
-    """Um símbolo desenhado: '.', '-' ou '/', e sua caixa na foto final."""
-
     tipo: str
-    caixa: tuple[int, int, int, int]  # x, y, largura, altura
+    caixa: tuple[int, int, int, int]
     linha: int
 
 
 @dataclass
 class PaginaSintetica:
-    imagem: np.ndarray  # cinza, uint8
+    imagem: np.ndarray
     linhas: list[str] = field(default_factory=list)
     simbolos: list[SimboloGabarito] = field(default_factory=list)
 
 
 @dataclass
 class _Estilo:
-    """Jeito de escrever de uma "pessoa" (fixo dentro da página)."""
-
     espessura: float
     raio_ponto: float
     comprimento_traco: float
     espaco_simbolo: float
     espaco_letra: float
     espaco_palavra: float
-    elevacao_traco: float  # fração do espaçamento da pauta
-    tinta: float  # 0 = preto
+    elevacao_traco: float
+    tinta: float
     usa_barra: bool
     chance_anel: float
 
 
 def _mensagem(gerador: random.Random) -> str:
     if gerador.random() < 0.15:
-        # Letras e números aleatórios: cobre códigos raros.
         simbolos = list(TEXTO_PARA_MORSE)
         return "".join(gerador.choice(simbolos) for _ in range(gerador.randint(2, 6)))
     return " ".join(gerador.choice(PALAVRAS) for _ in range(gerador.randint(1, 3)))
@@ -156,7 +131,6 @@ def _desenhar_barra(mascara, x0, base, espacamento, estilo, gerador):
 
 
 def _largura_palavra(palavra: str, estilo: _Estilo) -> float:
-    """Estimativa folgada da largura de uma palavra."""
     total = 0.0
     for letra in palavra:
         codigo = TEXTO_PARA_MORSE[letra]
@@ -171,15 +145,6 @@ def _largura_palavra(palavra: str, estilo: _Estilo) -> float:
 
 def _escrever_linha(mascara, texto, x_inicio, x_limite, base, espacamento,
                     estilo, gerador):
-    """
-    Desenha uma mensagem sobre a pauta.
-
-    Só desenha palavras inteiras que cabem na linha, para que o texto
-    devolvido corresponda exatamente ao que foi desenhado.
-
-    Returns:
-        ([(tipo, caixa)], texto desenhado)
-    """
     simbolos = []
     escritas = []
     x = x_inicio
@@ -221,7 +186,6 @@ def _escrever_linha(mascara, texto, x_inicio, x_limite, base, espacamento,
 
 
 def _texto_fantasma(pagina, gerador, area):
-    """Rabiscos claros: escrita do verso aparecendo por transparência."""
     x0, y0, x1, y1 = area
     camada = np.zeros_like(pagina)
     for _ in range(gerador.randint(10, 40)):
@@ -238,10 +202,8 @@ def _texto_fantasma(pagina, gerador, area):
 
 
 def gerar_pagina(gerador: random.Random) -> PaginaSintetica:
-    """Desenha uma página e devolve a foto final com o gabarito."""
     largura, altura = gerador.choice(((1500, 2000), (2000, 1500), (1700, 1700), (1800, 1200)))
 
-    # Mesa (fundo da foto) e papel.
     mesa = gerador.uniform(0.05, 0.4)
     pagina = np.full((altura, largura), mesa, np.float32)
     margem_x = int(largura * gerador.choice((0, 0, 0.04, 0.1)))
@@ -250,7 +212,6 @@ def gerar_pagina(gerador: random.Random) -> PaginaSintetica:
     pagina[margem_y:altura - margem_y or altura, margem_x:largura - margem_x or largura] = papel
     area = (margem_x, margem_y, largura - margem_x, altura - margem_y)
 
-    # Pautas.
     espacamento = gerador.uniform(55, 110)
     pautado = gerador.random() < 0.8
     primeira = area[1] + espacamento * gerador.uniform(0.8, 2.5)
@@ -266,13 +227,11 @@ def gerar_pagina(gerador: random.Random) -> PaginaSintetica:
     if gerador.random() < 0.35:
         pagina = _texto_fantasma(pagina, gerador, area)
 
-    # Espiral do caderno.
     if pautado and gerador.random() < 0.3:
         for y in np.arange(area[1] + 20, area[3], gerador.uniform(35, 60)):
             cv2.ellipse(pagina, (area[0] + 18, int(y)), (14, 9), 0, 0, 360,
                         gerador.uniform(0.05, 0.3), -1, cv2.LINE_AA)
 
-    # Escrita: tinta numa máscara 4x maior (bordas suaves).
     mascara = np.zeros((altura * 4, largura * 4), np.float32)
     estilo = _estilo(gerador, espacamento)
     x_inicio = area[0] + largura * gerador.uniform(0.05, 0.2)
@@ -293,7 +252,6 @@ def gerar_pagina(gerador: random.Random) -> PaginaSintetica:
     tinta = cv2.resize(mascara, (largura, altura), interpolation=cv2.INTER_AREA)
     pagina = pagina * (1 - tinta) + estilo.tinta * tinta
 
-    # Lapiseira sobre uma faixa sem texto.
     if gerador.random() < 0.2:
         livres = [y for i, y in enumerate(bases) if i not in escolhidas and i - 1 not in escolhidas]
         if livres:
@@ -301,7 +259,6 @@ def gerar_pagina(gerador: random.Random) -> PaginaSintetica:
             cv2.rectangle(pagina, (int(largura * 0.25), y), (largura, y + int(espacamento * 0.7)),
                           gerador.uniform(0.02, 0.12), -1)
 
-    # Iluminação desigual e sombra.
     yy, xx = np.mgrid[0:altura, 0:largura].astype(np.float32)
     angulo = gerador.uniform(0, 2 * math.pi)
     gradiente = (xx * math.cos(angulo) + yy * math.sin(angulo)) / max(largura, altura)
@@ -316,7 +273,6 @@ def gerar_pagina(gerador: random.Random) -> PaginaSintetica:
         luz *= 1 - gerador.uniform(0.2, 0.5) * sombra
     pagina *= luz
 
-    # Geometria da "foto": rotação, perspectiva e resolução final.
     lado_final = gerador.choice((700, 900, 1000, 1280, 1600, 2000))
     escala = lado_final / max(largura, altura)
     origem = np.float32([[0, 0], [largura, 0], [largura, altura], [0, altura]])
@@ -336,7 +292,6 @@ def gerar_pagina(gerador: random.Random) -> PaginaSintetica:
     foto = cv2.warpPerspective(pagina, homografia, tamanho,
                                flags=cv2.INTER_AREA, borderValue=float(mesa))
 
-    # Desfoque, ruído e compressão de celular.
     if gerador.random() < 0.7:
         foto = cv2.GaussianBlur(foto, (0, 0), gerador.uniform(0.3, 1.3))
     foto = foto * 255 + np.random.default_rng(gerador.randint(0, 2**31)).normal(

@@ -1,11 +1,3 @@
-"""
-Views da API de reconhecimento de imagens do CodeVision.
-
-Endpoints:
-- POST /api/reconhecimento/       -> reconhece símbolos em uma imagem.
-- GET  /api/reconhecimento/status/ -> verifica o estado do serviço de IA.
-"""
-
 import logging
 
 from rest_framework import status
@@ -39,19 +31,6 @@ logger = logging.getLogger(__name__)
 @parser_classes([MultiPartParser, FormParser])
 @permission_classes([AllowAny])
 def reconhecer_imagem(request):
-    """
-    Recebe uma imagem e solicita o reconhecimento dos símbolos.
-
-    A imagem deve ser enviada pelo campo 'imagem', usando
-    multipart/form-data.
-
-    Retorna:
-        200: imagem processada com sucesso.
-        400: requisição ou imagem inválida.
-        422: não foi possível reconhecer os símbolos.
-        500: erro interno durante o processamento.
-        503: modelo de IA indisponível.
-    """
     serializer_entrada = ImagemReconhecimentoSerializer(
         data=request.data
     )
@@ -69,13 +48,10 @@ def reconhecer_imagem(request):
     arquivo = serializer_entrada.validated_data["imagem"]
 
     try:
-        # Aplica as validações específicas da imagem antes de chamar a IA.
         validar_imagem(arquivo)
 
-        # O serviço coordena o processamento e o reconhecimento.
         resultado = servico_reconhecimento.reconhecer_imagem(arquivo)
 
-        # Confere se o resultado possui a estrutura esperada pela API.
         serializer_saida = ResultadoReconhecimentoSerializer(
             data=resultado
         )
@@ -172,12 +148,6 @@ def reconhecer_imagem(request):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def status_reconhecimento(request):
-    """
-    Informa se o backend está funcionando e se o modelo está disponível.
-
-    Este endpoint não carrega o modelo na memória: apenas verifica
-    sua disponibilidade e se já foi carregado pelo serviço.
-    """
     try:
         caminho_modelo = servico_reconhecimento.caminho_modelo
 

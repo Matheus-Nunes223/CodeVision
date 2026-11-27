@@ -1,24 +1,3 @@
-"""
-Mede o sistema completo (segmentação + CNN + decodificação) em fotos
-com gabarito.
-
-Gabarito aceito na pasta das fotos:
-    - gabarito.json (gerado por ia/gerar_manuscrito.py), ou
-    - gabarito.txt, uma foto por linha, várias linhas de texto da foto
-      separadas por "|":
-          foto01.jpg: OLA MUNDO
-          foto02.jpg: SOS | EU GOSTO DE VOCE
-
-Métricas:
-    - acurácia por caractere: 1 - (distância de edição / tamanho do
-      gabarito), somando todas as fotos; espaços entre palavras contam;
-    - fotos lidas 100% certas.
-
-Uso (a partir de CodeVision/):
-    python -m ia.avaliar_fotos fotos_sinteticas/teste
-    python -m ia.avaliar_fotos fotos_reais --modelo modelos/modelo_morse.pth
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -33,7 +12,6 @@ SEPARADOR_LINHAS = " | "
 
 
 def distancia_edicao(a: str, b: str) -> int:
-    """Levenshtein: inserções, remoções e trocas de caractere."""
     anterior = list(range(len(b) + 1))
     for i, ca in enumerate(a, start=1):
         atual = [i]

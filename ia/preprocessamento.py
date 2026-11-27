@@ -1,24 +1,3 @@
-"""
-Pré-processamento de imagens do CodeVision.
-
-Responsabilidades:
-- Carregar imagens a partir de arquivos ou arrays.
-- Converter imagens para escala de cinza.
-- Melhorar o contraste quando necessário.
-- Preparar imagens para segmentação posterior.
-- Preparar recortes individuais de símbolos Morse para a CNN.
-
-Contrato com modelo.py:
-- Cada símbolo é representado por um tensor de formato (1, 32, 32).
-- Os pixels são normalizados para o intervalo [0, 1].
-- A dimensão de canal é única, pois a rede utiliza imagens em escala de cinza.
-
-Este módulo NÃO realiza:
-- Detecção dos símbolos em uma imagem completa.
-- Classificação dos símbolos pela CNN.
-- Decodificação de mensagens Morse.
-"""
-
 from pathlib import Path
 from typing import Union
 
@@ -32,11 +11,10 @@ TAMANHO_SIMBOLO = (32, 32)
 
 
 class ErroPreprocessamento(Exception):
-    """Erro específico durante o pré-processamento de imagens."""
+    pass
 
 
 class PreprocessadorCodeVision:
-    """Prepara imagens para as etapas seguintes do CodeVision."""
 
     def __init__(
         self,
@@ -44,13 +22,6 @@ class PreprocessadorCodeVision:
         melhorar_contraste: bool = True,
         inverter_automaticamente: bool = True,
     ):
-        """
-        Args:
-            tamanho_simbolo: dimensões (largura, altura) dos símbolos.
-            melhorar_contraste: aplica melhoria de contraste às imagens.
-            inverter_automaticamente: tenta manter os símbolos escuros
-                sobre fundo claro, quando essa escolha for evidente.
-        """
         if (
             not isinstance(tamanho_simbolo, tuple)
             or len(tamanho_simbolo) != 2
@@ -69,7 +40,6 @@ class PreprocessadorCodeVision:
 
     @staticmethod
     def _validar_caminho(caminho: CaminhoImagem) -> Path:
-        """Valida o caminho de uma imagem."""
         if not isinstance(caminho, (str, Path)):
             raise TypeError("O caminho da imagem deve ser uma string ou Path.")
 
@@ -89,7 +59,6 @@ class PreprocessadorCodeVision:
 
     @staticmethod
     def _converter_para_imagem(imagem: Image.Image) -> Image.Image:
-        """Converte uma imagem para escala de cinza de 8 bits."""
         if not isinstance(imagem, Image.Image):
             raise TypeError("O objeto informado não é uma imagem PIL.")
 
@@ -97,12 +66,6 @@ class PreprocessadorCodeVision:
 
     @staticmethod
     def _inverter_se_necessario(imagem: Image.Image) -> Image.Image:
-        """
-        Tenta detectar imagens com fundo predominantemente escuro.
-
-        A inversão é uma heurística simples, não uma garantia de que
-        os símbolos estejam corretamente identificados.
-        """
         pixels = np.asarray(imagem, dtype=np.float32)
 
         if pixels.size == 0:
@@ -116,12 +79,6 @@ class PreprocessadorCodeVision:
         return imagem
 
     def carregar_imagem(self, caminho: CaminhoImagem) -> Image.Image:
-        """
-        Carrega e prepara uma imagem completa.
-
-        Returns:
-            Imagem PIL em escala de cinza, pronta para etapas posteriores.
-        """
         arquivo = self._validar_caminho(caminho)
 
         try:
@@ -147,17 +104,6 @@ class PreprocessadorCodeVision:
         return imagem
 
     def carregar_array(self, imagem: np.ndarray) -> Image.Image:
-        """
-        Converte um array NumPy em uma imagem PIL em escala de cinza.
-
-        Aceita:
-        - Imagens em tons de cinza (H, W).
-        - Imagens RGB (H, W, 3).
-        - Imagens RGBA (H, W, 4).
-
-        Arrays float devem conter valores entre 0 e 1.
-        Arrays inteiros devem conter valores entre 0 e 255.
-        """
         if not isinstance(imagem, np.ndarray):
             raise TypeError("A imagem deve ser um array NumPy.")
 
@@ -221,11 +167,6 @@ class PreprocessadorCodeVision:
 
     @staticmethod
     def _completar_quadrado(imagem: Image.Image) -> Image.Image:
-        """
-        Centraliza o recorte em um quadrado preenchido com a cor do fundo.
-
-        A cor do fundo é a mediana da borda do recorte.
-        """
         largura, altura = imagem.size
 
         if largura == altura:
@@ -250,20 +191,6 @@ class PreprocessadorCodeVision:
         imagem: Union[Image.Image, np.ndarray],
         inverter: bool = False,
     ) -> torch.Tensor:
-        """
-        Prepara um recorte que contém um único símbolo Morse.
-
-        Args:
-            imagem: recorte do ponto ou traço, em PIL ou NumPy.
-            inverter: inverte explicitamente os tons da imagem.
-
-        Returns:
-            Tensor float32 com formato (1, 32, 32), normalizado para [0, 1].
-
-        Importante:
-            O método pressupõe que o recorte já contenha um símbolo.
-            Ele não localiza nem separa símbolos de uma mensagem completa.
-        """
         if isinstance(imagem, np.ndarray):
             imagem_pil = self.carregar_array(imagem)
         elif isinstance(imagem, Image.Image):
@@ -279,8 +206,6 @@ class PreprocessadorCodeVision:
         if self.melhorar_contraste:
             imagem_pil = ImageEnhance.Contrast(imagem_pil).enhance(1.5)
 
-        # Mantém a proporção: o comprimento em relação à espessura é o
-        # que distingue ponto de traço, independentemente da caneta.
         imagem_pil = self._completar_quadrado(imagem_pil)
 
         imagem_pil = imagem_pil.resize(
@@ -290,7 +215,6 @@ class PreprocessadorCodeVision:
 
         array = np.asarray(imagem_pil, dtype=np.float32) / 255.0
 
-        # O modelo recebe um canal de imagem: (1, altura, largura).
         tensor = torch.from_numpy(array.copy()).unsqueeze(0)
 
         return tensor.to(dtype=torch.float32)
@@ -299,12 +223,6 @@ class PreprocessadorCodeVision:
         self,
         caminho: CaminhoImagem,
     ) -> torch.Tensor:
-        """
-        Carrega um arquivo e prepara seu conteúdo como símbolo individual.
-
-        Use este método somente quando o arquivo já contiver um recorte
-        com um único símbolo, e não uma mensagem Morse inteira.
-        """
         imagem = self.carregar_imagem(caminho)
         return self.preparar_simbolo(imagem)
 
@@ -313,11 +231,6 @@ class PreprocessadorCodeVision:
         imagem: Union[Image.Image, np.ndarray],
         destino: CaminhoImagem,
     ) -> Path:
-        """
-        Salva uma imagem em escala de cinza após o pré-processamento.
-
-        Útil para inspecionar visualmente o resultado durante os testes.
-        """
         if isinstance(imagem, np.ndarray):
             imagem_pil = self.carregar_array(imagem)
         elif isinstance(imagem, Image.Image):

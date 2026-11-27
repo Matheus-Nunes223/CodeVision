@@ -1,14 +1,3 @@
-"""
-Serviços de reconhecimento de imagens do CodeVision.
-
-Responsabilidades:
-- Carregar e preparar o modelo de inteligência artificial.
-- Receber imagens validadas pela API.
-- Executar o reconhecimento visual dos símbolos.
-- Organizar os resultados para o backend.
-- Tratar falhas de carregamento e processamento.
-"""
-
 import logging
 import threading
 import time
@@ -32,22 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 class ServicoReconhecimento:
-    """
-    Coordena o reconhecimento visual das imagens do CodeVision.
-
-    O modelo é carregado sob demanda e reutilizado nas próximas
-    requisições, evitando recarregá-lo a cada imagem.
-    """
 
     NOME_MODELO = "modelo_morse.pth"
 
     def __init__(self, caminho_modelo=None):
-        """
-        Inicializa o serviço.
-
-        Args:
-            caminho_modelo: caminho opcional para os pesos treinados.
-        """
 
         self.raiz_projeto = Path(__file__).resolve().parents[2]
 
@@ -67,22 +44,11 @@ class ServicoReconhecimento:
         self._lock = threading.Lock()
 
     def carregar_modelo(self):
-        """
-        Carrega o modelo de IA uma única vez por instância.
-
-        Returns:
-            ReconhecedorCodeVision: reconhecedor inicializado.
-
-        Raises:
-            ModeloIAIndisponivel: se o modelo não puder ser carregado.
-        """
 
         if self.reconhecedor is not None:
             return self.reconhecedor
 
         with self._lock:
-            # Outra requisição pode ter carregado o modelo
-            # enquanto esta aguardava o bloqueio.
             if self.reconhecedor is not None:
                 return self.reconhecedor
 
@@ -125,22 +91,8 @@ class ServicoReconhecimento:
 
     @staticmethod
     def _abrir_imagem(arquivo):
-        """
-        Abre o arquivo enviado e o converte para RGB.
-
-        Args:
-            arquivo: arquivo de imagem recebido pela API.
-
-        Returns:
-            numpy.ndarray: imagem RGB.
-
-        Raises:
-            ErroProcessamentoImagem: se a imagem não puder ser lida.
-        """
 
         try:
-            # Retorna o arquivo ao início caso já tenha sido lido
-            # durante a validação do serializer.
             if hasattr(arquivo, "seek"):
                 arquivo.seek(0)
 
@@ -162,7 +114,6 @@ class ServicoReconhecimento:
             ) from exc
 
         finally:
-            # Permite que o arquivo seja lido novamente, se necessário.
             if hasattr(arquivo, "seek"):
                 try:
                     arquivo.seek(0)
@@ -171,16 +122,6 @@ class ServicoReconhecimento:
 
     @staticmethod
     def _normalizar_simbolos(resultado):
-        """
-        Converte os símbolos reconhecidos em uma lista padronizada.
-
-        O reconhecedor visual deve retornar um dicionário contendo
-        a chave 'simbolos'. Cada item pode ser um símbolo textual
-        ou um dicionário com informações de classificação.
-
-        Returns:
-            list: símbolos encontrados na imagem.
-        """
 
         simbolos_brutos = resultado.get("simbolos", [])
 
@@ -209,11 +150,6 @@ class ServicoReconhecimento:
 
     @staticmethod
     def _extrair_resultados_detalhados(resultado):
-        """
-        Obtém os resultados detalhados produzidos pelo reconhecedor.
-
-        Se não houver resultados detalhados, utiliza uma lista vazia.
-        """
 
         resultados = resultado.get("resultados", [])
 
@@ -224,13 +160,6 @@ class ServicoReconhecimento:
 
     @staticmethod
     def _montar_texto_simbolos(simbolos):
-        """
-        Monta uma representação textual dos símbolos identificados.
-
-        Nesta etapa, os símbolos são apresentados na ordem fornecida
-        pelo reconhecedor. A separação entre letras e palavras deverá
-        ser resolvida pelo módulo de decodificação.
-        """
 
         partes = []
 
@@ -243,20 +172,6 @@ class ServicoReconhecimento:
         return " ".join(partes)
 
     def reconhecer_imagem(self, arquivo):
-        """
-        Executa o reconhecimento visual de uma imagem.
-
-        Args:
-            arquivo: arquivo de imagem validado pela API.
-
-        Returns:
-            dict: resultado organizado para a API.
-
-        Raises:
-            ModeloIAIndisponivel: se o modelo não estiver disponível.
-            ErroProcessamentoImagem: se a imagem não puder ser processada.
-            ErroReconhecimento: se o reconhecimento falhar.
-        """
 
         inicio = time.perf_counter()
 
@@ -276,9 +191,6 @@ class ServicoReconhecimento:
                 resultado_bruto
             )
 
-            # A IA retorna strings resumidas em "simbolos" e objetos completos
-            # em "resultados". Usar esses objetos mantém classes, probabilidades,
-            # confiança e coordenadas no contrato público da API.
             if resultados_detalhados:
                 simbolos = [
                     {
@@ -297,8 +209,6 @@ class ServicoReconhecimento:
             else:
                 simbolos = self._normalizar_simbolos(resultado_bruto)
 
-            # O reconhecedor já separa letras ("... ---") e palavras (" / ");
-            # a montagem simples fica como alternativa.
             morse = resultado_bruto.get("morse")
             texto_reconhecido = (
                 morse
@@ -349,6 +259,4 @@ class ServicoReconhecimento:
             ) from exc
 
 
-# Instância compartilhada pelo processo do backend.
-# O modelo só será carregado quando ocorrer a primeira requisição.
 servico_reconhecimento = ServicoReconhecimento()

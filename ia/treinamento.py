@@ -1,31 +1,3 @@
-"""
-Treinamento da CNN do CodeVision.
-
-Responsabilidades:
-- Carregar imagens organizadas por classe.
-- Associar rótulos numéricos às imagens.
-- Pré-processar as imagens usando PreprocessadorCodeVision.
-- Separar os dados em treinamento e validação.
-- Verificar se as classes possuem exemplos suficientes.
-- Treinar a CNN usando ModeloCodeVision.
-- Salvar o modelo treinado.
-
-Estrutura esperada:
-
-datasets/
-    fundo/
-    ponto/
-    traco/
-
-Rótulos:
-    0 = fundo
-    1 = ponto
-    2 = traco
-
-As imagens devem representar exemplos individuais das classes,
-não mensagens Morse completas.
-"""
-
 from pathlib import Path
 from typing import Optional
 
@@ -60,11 +32,10 @@ EXTENSOES_VALIDAS = {
 
 
 class ErroTreinamento(Exception):
-    """Erro específico durante a preparação ou execução do treinamento."""
+    pass
 
 
 class TreinadorCodeVision:
-    """Gerencia o conjunto de dados e o treinamento da CNN."""
 
     def __init__(
         self,
@@ -76,20 +47,6 @@ class TreinadorCodeVision:
         diretorio_teste: str | Path | None = "datasets_teste",
         peso_real: int = 4,
     ):
-        """
-        Args:
-            diretorio_dados: diretório que contém as pastas das classes.
-            diretorio_modelos: diretório onde o modelo será salvo.
-            preprocessador: instância responsável pelo pré-processamento.
-            proporcao_validacao: fração reservada para validação.
-            semente: semente para tornar a divisão reproduzível.
-            diretorio_teste: teste independente (mesmas pastas de
-                classes). Nunca entra no treinamento. Se não existir,
-                a avaliação independente é ignorada.
-            peso_real: quantas vezes os exemplos reais (arquivos que
-                começam com 'real_') aparecem no treinamento, para não
-                serem diluídos pelos sintéticos.
-        """
         if (
             not isinstance(peso_real, int)
             or isinstance(peso_real, bool)
@@ -133,7 +90,6 @@ class TreinadorCodeVision:
         self.quantidade_por_classe = {}
 
     def _validar_diretorio(self) -> None:
-        """Verifica se o conjunto de dados existe e está organizado."""
         if not self.diretorio_dados.exists():
             raise FileNotFoundError(
                 f"Diretório de dados não encontrado: "
@@ -155,7 +111,6 @@ class TreinadorCodeVision:
                 )
 
     def _listar_imagens(self) -> dict[str, list[Path]]:
-        """Lista as imagens válidas de cada classe."""
         self._validar_diretorio()
 
         imagens_por_classe = {}
@@ -187,11 +142,6 @@ class TreinadorCodeVision:
         return imagens_por_classe
 
     def _carregar_imagem(self, caminho: Path) -> torch.Tensor:
-        """
-        Carrega e pré-processa uma imagem individual.
-
-        Retorna um tensor com formato (1, 32, 32).
-        """
         try:
             with Image.open(caminho) as imagem_original:
                 imagem_original.load()
@@ -224,13 +174,6 @@ class TreinadorCodeVision:
 
     @staticmethod
     def _origem(caminho: Path) -> str:
-        """
-        Identifica a imagem-fonte de um recorte.
-
-        Os recortes gerados por preparar_datasets.py se chamam
-        '<origem>_<sub>_<letra>_<id>_<indice>.png'. Remover o sufixo
-        '_<indice>' agrupa todos os recortes da mesma imagem.
-        """
         nome = caminho.stem
         base, _, sufixo = nome.rpartition("_")
         return base if base and sufixo.isdigit() else nome
@@ -239,7 +182,6 @@ class TreinadorCodeVision:
         self,
         imagens_por_classe: dict[str, list[Path]],
     ) -> tuple[torch.Tensor, torch.Tensor, list[str]]:
-        """Converte as imagens em tensores, rótulos e origens."""
         imagens = []
         rotulos = []
         origens = []
@@ -290,13 +232,6 @@ class TreinadorCodeVision:
         torch.Tensor,
         torch.Tensor,
     ]:
-        """
-        Divide os dados por imagem-fonte, evitando vazamento.
-
-        Todos os recortes de uma mesma imagem ficam no mesmo
-        conjunto (treinamento ou validação). A validação recebe
-        aproximadamente `proporcao_validacao` das origens.
-        """
         gerador = random.Random(self.semente)
 
         todas_origens = sorted(set(origens))
@@ -322,8 +257,6 @@ class TreinadorCodeVision:
             else:
                 indices_treino.append(indice)
 
-        # Repete os exemplos reais; cada repetição recebe um aumento
-        # de dados diferente a cada época.
         self.copias_reais = 0
 
         if self.peso_real > 1:
@@ -369,13 +302,6 @@ class TreinadorCodeVision:
     def _carregar_teste_independente(
         self,
     ) -> tuple[torch.Tensor, torch.Tensor, list[str]] | None:
-        """
-        Carrega o teste independente, se a pasta existir.
-
-        Se a pasta existir, as três pastas de classes também precisam
-        existir e conter imagens; caso contrário, o teste cobriria só
-        parte das classes sem aviso.
-        """
         if self.diretorio_teste is None or not self.diretorio_teste.is_dir():
             return None
 
@@ -421,7 +347,6 @@ class TreinadorCodeVision:
         origens_treino: list[str],
         origens_teste: list[str],
     ) -> None:
-        """Impede que uma mesma imagem-fonte esteja no treino e no teste."""
         comuns = sorted(set(origens_treino) & set(origens_teste))
 
         if comuns:
@@ -440,19 +365,6 @@ class TreinadorCodeVision:
         peso_decay: float = 0.0001,
         nome_modelo: str = "modelo_morse.pth",
     ) -> ModeloCodeVision:
-        """
-        Executa o fluxo completo de treinamento.
-
-        Args:
-            epocas: número de épocas de treinamento.
-            tamanho_lote: quantidade de exemplos por lote.
-            taxa_aprendizado: taxa de aprendizado do otimizador.
-            peso_decay: regularização L2 do otimizador.
-            nome_modelo: nome do arquivo de pesos a salvar.
-
-        Returns:
-            Instância de ModeloCodeVision treinada.
-        """
         if (
             not isinstance(epocas, int)
             or isinstance(epocas, bool)
@@ -515,7 +427,6 @@ class TreinadorCodeVision:
             imagens_por_classe
         )
 
-        # Carregado antes do treino: um erro aqui não desperdiça épocas.
         teste = self._carregar_teste_independente()
 
         if teste is not None:
@@ -596,7 +507,6 @@ class TreinadorCodeVision:
 
 
 def main() -> None:
-    """Ponto de entrada para executar o treinamento pelo terminal."""
     treinador = TreinadorCodeVision(
         diretorio_dados="datasets",
         diretorio_modelos="modelos",

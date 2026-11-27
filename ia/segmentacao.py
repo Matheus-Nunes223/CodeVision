@@ -1,24 +1,3 @@
-"""
-Segmentação de símbolos Morse em fotos reais.
-
-Localiza pontos, traços e barras de separação ("/") em fotos de papel,
-inclusive cadernos pautados, com sombras, inclinação e objetos sobre a
-folha (canetas, lapiseiras, espiral, mesa ao fundo).
-
-Etapas:
-    1. Reduz a foto para um tamanho de trabalho fixo.
-    2. Normaliza a iluminação (divide pelo fundo estimado): sombras e
-       regiões escuras uniformes viram "papel".
-    3. Estima a região do papel e descarta o que estiver fora dela.
-    4. Mede a inclinação pelas pautas do caderno e endireita a imagem.
-    5. Binariza a tinta e remove as pautas (linhas horizontais longas).
-    6. Filtra componentes pelo tamanho típico do traço da caneta.
-    7. Agrupa os símbolos em linhas de texto (pela pauta, quando há).
-
-A classificação ponto/traço é feita depois, pela CNN; aqui só se decide
-o que é candidato a símbolo e como os candidatos se organizam.
-"""
-
 from __future__ import annotations
 
 import math
@@ -29,39 +8,28 @@ import numpy as np
 
 
 LADO_TRABALHO = 1600
-# Letra miúda: abaixo desta espessura de traço (px), amplia a foto 2x,
-# até o lado maior chegar a LADO_MAXIMO.
 ESPESSURA_MINIMA = 5
 LADO_MAXIMO = 3200
 
-# Tinta no papel normalizado (0 = preto, 255 = papel). Alto o bastante
-# para pegar traços finos e claros; o que a pauta deixar passar é
-# removido pela detecção das linhas longas.
 LIMIAR_TINTA = 170
 LIMIAR_PAUTA = 215
 
-# Tom (0 = preto, 255 = papel) acima do qual uma linha inteira é
-# impressão cinza da gráfica (logotipo, caixa de data), não tinta.
 TOM_MAXIMO_LINHA = 115
-# Quanto um componente pode ser mais claro que a tinta da sua linha.
 FOLGA_TOM = 70
 
-# O papel na sombra fica em ~45% do brilho do papel claro; objetos
-# escuros (lapiseira, mesa, tecido) ficam abaixo de ~35%.
 FRACAO_NUCLEO = 0.25
 
 
 @dataclass
 class Componente:
-    """Candidato a símbolo, em coordenadas da imagem de trabalho."""
 
     x: int
     y: int
     largura: int
     altura: int
     area: int
-    rotulo: int = 0  # índice do componente em ResultadoSegmentacao.rotulos
-    tom: int = 0  # 10º percentil do brilho (0 = preto) na imagem normalizada
+    rotulo: int = 0
+    tom: int = 0
     barra: bool = False
 
     @property
@@ -75,16 +43,13 @@ class Componente:
 
 @dataclass
 class ResultadoSegmentacao:
-    """Saída da segmentação."""
 
-    imagem: np.ndarray  # cinza, reduzida e endireitada
+    imagem: np.ndarray
     linhas: list[list[Componente]] = field(default_factory=list)
-    # Mapa de componentes da tinta (sem pautas): permite recortar só os
-    # pixels de um símbolo, sem a pauta ou vizinhos que cruzam o recorte.
     rotulos: np.ndarray | None = None
-    espessura: float = 0.0  # espessura típica do traço da caneta (px)
-    angulo: float = 0.0  # rotação aplicada (graus)
-    escala: float = 1.0  # imagem de trabalho / original
+    espessura: float = 0.0
+    angulo: float = 0.0
+    escala: float = 1.0
 
 
 def _normalizar_iluminacao(cinza: np.ndarray) -> np.ndarray:
@@ -99,7 +64,6 @@ def _normalizar_iluminacao(cinza: np.ndarray) -> np.ndarray:
 
 
 def _mascara_papel(cinza: np.ndarray) -> np.ndarray:
-    """Regiões claras da foto (o papel), afastadas das bordas."""
     borrada = cv2.medianBlur(
         cv2.morphologyEx(
             cinza,
@@ -110,10 +74,6 @@ def _mascara_papel(cinza: np.ndarray) -> np.ndarray:
     )
     referencia = float(np.percentile(borrada, 95))
 
-    # Objetos escuros (lapiseira, mesa, tecido) têm um "núcleo" bem mais
-    # escuro que qualquer sombra sobre o papel. Reflexos e letras claras
-    # dentro do objeto são preenchidos pelo fechamento; a dilatação
-    # afasta as bordas. Todo o resto, inclusive a sombra, é papel.
     nucleo = (borrada < FRACAO_NUCLEO * referencia).astype(np.uint8) * 255
     k_objeto = max(15, int(max(cinza.shape) / 25) | 1)
     nucleo = cv2.morphologyEx(
@@ -134,7 +94,6 @@ def _mascara_papel(cinza: np.ndarray) -> np.ndarray:
     if numero <= 1:
         return np.full_like(cinza, 255)
 
-    # Um objeto sobre a folha pode dividir o papel em partes.
     maior = estatisticas[1:, cv2.CC_STAT_AREA].max()
     partes = [
         i for i in range(1, numero)
@@ -154,13 +113,6 @@ def _mascara_papel(cinza: np.ndarray) -> np.ndarray:
 
 
 def _preencher_buracos(papel: np.ndarray) -> np.ndarray:
-    """
-    Marca como papel toda região escura cercada de papel.
-
-    Pontos grossos de caneta parecem "regiões escuras" para a máscara;
-    mesa e objetos sobre a folha sempre chegam à borda da foto, então
-    só o que não toca a borda é preenchido.
-    """
     fora = (papel == 0).astype(np.uint8)
     numero, rotulos, estatisticas, _ = cv2.connectedComponentsWithStats(
         fora, connectivity=4
@@ -178,7 +130,6 @@ def _preencher_buracos(papel: np.ndarray) -> np.ndarray:
 
 
 def _angulo_pautas(norm: np.ndarray) -> float:
-    """Ângulo dominante das linhas longas quase horizontais (graus)."""
     bordas = cv2.Canny(norm, 50, 150)
     linhas = cv2.HoughLinesP(
         bordas,
@@ -214,7 +165,6 @@ def _girar(imagem: np.ndarray, angulo: float, borda: int) -> np.ndarray:
 
 
 def _posicoes_pautas(pautas: np.ndarray) -> list[float]:
-    """Coordenada y de cada pauta (linha impressa) detectada."""
     projecao = (pautas > 0).sum(axis=1)
     ativas = projecao > 0.15 * pautas.shape[1]
     posicoes = []
@@ -234,7 +184,6 @@ def _posicoes_pautas(pautas: np.ndarray) -> list[float]:
 
 
 def _espessura_pautas(pautas: np.ndarray, quantidade: int) -> int:
-    """Espessura média das pautas, em pixels (ímpar, de 3 a 15)."""
     if quantidade == 0:
         return 3
     pixels = int((pautas > 0).sum())
@@ -256,15 +205,6 @@ def _componentes(mascara: np.ndarray) -> tuple[list[Componente], np.ndarray]:
 
 
 def _sem_colunas(componentes: list[Componente]) -> list[Componente]:
-    """
-    Remove manchas empilhadas numa coluna vertical (furos da espiral,
-    marcas da margem).
-
-    Uma coluna de espiral tem muitas manchas do mesmo tamanho, exatamente
-    alinhadas. Texto com várias linhas começando na mesma margem também
-    alinha símbolos na vertical, mas de tamanhos diferentes (pontos e
-    traços) e com alinhamento frouxo; por isso as três condições.
-    """
     relevantes = [c for c in componentes if c.area >= 15]
     if len(relevantes) < 7:
         return componentes
@@ -290,7 +230,6 @@ def _sem_colunas(componentes: list[Componente]) -> list[Componente]:
 
 
 def _espessura_tipica(componentes: list[Componente], forma) -> float:
-    """Espessura típica do traço da caneta, ignorando poeira e contornos."""
     area_minima = max(15, forma[0] * forma[1] * 1e-5)
     candidatos = [
         min(c.largura, c.altura)
@@ -310,8 +249,6 @@ def _filtrar(componentes: list[Componente], d: float) -> list[Componente]:
         menor = min(c.largura, c.altura)
         preenchimento = c.area / (c.largura * c.altura)
 
-        # A barra "/" é testada antes do filtro de tamanho: inclinada, sua
-        # caixa é larga, mas o traço é fino e ocupa pouco da caixa.
         if (
             2.5 * d <= c.altura <= 14 * d
             and c.altura >= 1.2 * c.largura
@@ -323,13 +260,13 @@ def _filtrar(componentes: list[Componente], d: float) -> list[Componente]:
             continue
 
         if menor > 5.0 * d or maior > 14 * d:
-            continue  # lapiseira, espiral, manchas grandes
+            continue
         if c.area < 0.4 * d * d:
-            continue  # poeira do papel
+            continue
         if preenchimento < 0.25:
-            continue  # contornos finos (logotipos, bordas)
+            continue
         if c.altura >= 2.5 * d and c.altura > 1.6 * c.largura:
-            c.barra = True  # barra quase vertical
+            c.barra = True
 
         aceitos.append(c)
 
@@ -341,13 +278,6 @@ def _agrupar_linhas(
     pautas: list[float],
     d: float,
 ) -> list[list[Componente]]:
-    """
-    Agrupa os símbolos em linhas de texto.
-
-    Com pautas: cada símbolo pertence à pauta logo abaixo dele (o ponto
-    costuma ficar sobre a pauta e o traço um pouco acima). Sem pautas:
-    agrupa por distância vertical.
-    """
     grupos: dict[int, list[Componente]] = {}
 
     espacamento = (
@@ -362,8 +292,6 @@ def _agrupar_linhas(
                 None,
             )
             if indice is None:
-                # Abaixo da última pauta detectada: continua a contagem
-                # com o mesmo espaçamento, em vez de juntar tudo num grupo.
                 indice = len(pautas) + int(
                     (limite - pautas[-1]) // espacamento
                 )
@@ -380,8 +308,6 @@ def _agrupar_linhas(
         if atual:
             linhas.append(atual)
 
-    # Se a pauta entre duas linhas de texto não foi detectada, as duas
-    # caem no mesmo grupo: separa pelo vão vertical entre os símbolos.
     vao = max(4.5 * d, 0.5 * espacamento)
     linhas = [parte for linha in linhas for parte in _separar_por_altura(linha, vao)]
 
@@ -394,7 +320,6 @@ def _separar_por_altura(
     linha: list[Componente],
     vao: float,
 ) -> list[list[Componente]]:
-    """Divide um grupo onde houver um vão vertical maior que `vao`."""
     ordenada = sorted(linha, key=lambda c: c.centro_y)
     partes = [[ordenada[0]]] if ordenada else []
     for anterior, atual in zip(ordenada, ordenada[1:]):
@@ -405,11 +330,6 @@ def _separar_por_altura(
 
 
 def _parece_poeira(simbolos: list[Componente], d: float) -> bool:
-    """
-    Linha de poeira (pintas na borda da folha): manchas pequenas E
-    espalhadas de forma irregular. Cada condição sozinha também aparece
-    em texto real (caneta fina; palavras sem "/"), as duas juntas não.
-    """
     area = float(np.median([c.area for c in simbolos]))
     ordenados = sorted(simbolos, key=lambda c: c.x)
     espacos = np.array([b.x - a.direita for a, b in zip(ordenados, ordenados[1:])])
@@ -425,25 +345,14 @@ def _limpar_linha(
     d: float,
     espacamento: float = 0.0,
 ) -> list[Componente] | None:
-    """
-    Mantém só o que se alinha horizontalmente com o texto da linha.
-
-    Remove intrusos (componentes de outra altura que caíram no mesmo
-    grupo) e descarta "linhas" que não são texto: furos da espiral
-    empilhados, letras de logotipos, poeira espalhada.
-    """
     simbolos = [c for c in linha if not c.barra]
     if len(simbolos) < 2:
         return None
 
-    # Impressão cinza da gráfica (logotipo, caixa de data) não é tinta.
     tom_linha = float(np.median([c.tom for c in simbolos]))
     if tom_linha > TOM_MAXIMO_LINHA:
         return None
 
-    # Restos de pauta e sujeira clara são bem mais claros que a tinta da
-    # própria linha. Relativo à linha: caneta fraca tem tom alto em todos
-    # os símbolos e não é afetada.
     linha = [c for c in linha if c.tom <= tom_linha + FOLGA_TOM]
 
     simbolos = [c for c in linha if not c.barra]
@@ -453,9 +362,6 @@ def _limpar_linha(
     if _parece_poeira(simbolos, d):
         return None
 
-    # Texto é quase horizontal: os centros ficam numa faixa estreita em
-    # torno de uma reta pouco inclinada (o traço fica um pouco acima do
-    # ponto). A mediana torna a reta resistente a intrusos.
     xs = np.array([c.x + c.largura / 2 for c in simbolos])
     ys = np.array([c.centro_y for c in simbolos])
     inclinacao = 0.0
@@ -471,8 +377,6 @@ def _limpar_linha(
 
     def alinhado(c: Componente) -> bool:
         residuo = c.centro_y - inclinacao * (c.x + c.largura / 2) - centro
-        # Com pauta, o limite acompanha o espaçamento: há quem escreva o
-        # traço bem acima do ponto.
         tolerancia = max((8 if c.barra else 7) * d, 0.75 * espacamento)
         return abs(residuo) <= tolerancia
 
@@ -482,7 +386,6 @@ def _limpar_linha(
     if len(simbolos) < 2:
         return None
 
-    # Dois componentes soltos e distantes são sujeira, não uma letra.
     if len(simbolos) == 2:
         a, b = simbolos
         if b.x - a.direita > 10 * d:
@@ -495,12 +398,6 @@ def recorte_isolado(
     resultado: ResultadoSegmentacao,
     componente: Componente,
 ) -> np.ndarray:
-    """
-    Recorta um símbolo com margem, mantendo só os seus próprios pixels.
-
-    Tudo o que não pertence ao componente (pauta que o atravessa,
-    símbolos vizinhos, manchas) é pintado com a cor do papel ao redor.
-    """
     imagem = resultado.imagem
     altura_img, largura_img = imagem.shape
     margem = max(2, round(0.15 * max(componente.largura, componente.altura)))
@@ -516,7 +413,6 @@ def recorte_isolado(
         return recorte
 
     proprio = (resultado.rotulos[y1:y2, x1:x2] == componente.rotulo)
-    # Inclui a borda suave (antisserrilhado) do traço da caneta.
     proprio = cv2.dilate(proprio.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
 
     fora = recorte[~proprio]
@@ -530,12 +426,6 @@ def alongamento(
     resultado: ResultadoSegmentacao,
     componente: Componente,
 ) -> float:
-    """
-    Comprimento ÷ espessura do símbolo, medido no retângulo mínimo que
-    o envolve (funciona também com traços inclinados).
-
-    Ponto fica perto de 1; traço, bem acima de 2.
-    """
     if resultado.rotulos is None or componente.rotulo == 0:
         lados = (componente.largura, componente.altura)
     else:
@@ -545,24 +435,12 @@ def alongamento(
         ]
         ys, xs = np.nonzero(janela == componente.rotulo)
         pontos = np.column_stack([xs, ys]).astype(np.float32)
-        # +1: um pixel tem tamanho 1, não 0.
         lados = tuple(v + 1 for v in cv2.minAreaRect(pontos)[1])
 
     return max(lados) / max(1.0, min(lados))
 
 
 def segmentar(cinza: np.ndarray) -> ResultadoSegmentacao:
-    """
-    Localiza e agrupa candidatos a símbolos em uma foto.
-
-    A escala de trabalho começa pelo tamanho da página. Se a letra for
-    miúda (traço da caneta abaixo de ESPESSURA_MINIMA px), a foto é
-    processada de novo ampliada 2x: o que importa para os filtros e para
-    a CNN é o tamanho dos símbolos, não o da página.
-
-    Args:
-        cinza: imagem em tons de cinza (uint8), em qualquer resolução.
-    """
     lado = LADO_TRABALHO
     resultado = _segmentar_na_escala(cinza, lado)
     while (
@@ -576,10 +454,6 @@ def segmentar(cinza: np.ndarray) -> ResultadoSegmentacao:
 
 
 def _segmentar_na_escala(cinza: np.ndarray, lado: int) -> ResultadoSegmentacao:
-    """Segmentação com o lado maior da foto levado a `lado` pixels."""
-    # Toda foto vai para a mesma escala de trabalho: reduzida se for
-    # grande, ampliada se for um recorte pequeno. Os filtros e operações
-    # morfológicas abaixo foram calibrados nessa escala.
     escala = lado / max(cinza.shape)
     if escala != 1:
         cinza = cv2.resize(
@@ -600,8 +474,6 @@ def _segmentar_na_escala(cinza: np.ndarray, lado: int) -> ResultadoSegmentacao:
 
     tinta = (norm < LIMIAR_TINTA).astype(np.uint8) * 255
 
-    # Com um limiar tolerante a pauta impressa fica contínua, e uma
-    # abertura horizontal longa isola só as linhas do caderno.
     comprimento = max(40, norm.shape[1] // 12)
     pautas = cv2.morphologyEx(
         (norm < LIMIAR_PAUTA).astype(np.uint8) * 255,
@@ -611,13 +483,10 @@ def _segmentar_na_escala(cinza: np.ndarray, lado: int) -> ResultadoSegmentacao:
     pautas = cv2.bitwise_and(pautas, papel)
     posicoes = _posicoes_pautas(pautas)
 
-    # A faixa removida acompanha a espessura real da pauta nesta foto.
     faixa = _espessura_pautas(pautas, len(posicoes)) + 2
     tinta = cv2.subtract(
         tinta, cv2.dilate(pautas, np.ones((faixa, 1), np.uint8))
     )
-    # Religa pontos, traços e barras "/" cortados pela faixa removida da
-    # pauta (a barra cruza a pauta na diagonal, por isso 3 px de largura).
     tinta = cv2.morphologyEx(
         tinta, cv2.MORPH_CLOSE, np.ones((faixa + 4, 3), np.uint8)
     )
@@ -630,7 +499,6 @@ def _segmentar_na_escala(cinza: np.ndarray, lado: int) -> ResultadoSegmentacao:
 
     componentes = _sem_colunas(componentes)
 
-    # Componentes cortados pela borda da foto não são símbolos inteiros.
     altura, largura = tinta.shape
     componentes = [
         c for c in componentes
@@ -642,8 +510,6 @@ def _segmentar_na_escala(cinza: np.ndarray, lado: int) -> ResultadoSegmentacao:
         proprio = rotulos[c.y:c.y + c.altura, c.x:c.direita] == c.rotulo
         c.tom = int(np.percentile(janela[proprio], 10))
 
-    # A espessura típica vem só do que tem tom de tinta: restos claros
-    # de pauta e impressões cinza não devem puxar a estimativa.
     escuros = [c for c in componentes if c.tom <= TOM_MAXIMO_LINHA]
     d = _espessura_tipica(escuros or componentes, tinta.shape)
 

@@ -1,27 +1,3 @@
-"""
-Rotula automaticamente os símbolos de fotos reais usando o gabarito.
-
-Para cada foto listada em <pasta>/gabarito.txt (ou só as escolhidas em
---fotos), a foto passa pela mesma segmentação do aplicativo. Cada linha
-de texto encontrada é comparada com as linhas do gabarito:
-
-    - se a quantidade de pontos/traços encontrados é igual à do Morse do
-      gabarito, cada símbolo recebe, na ordem da esquerda para a direita,
-      o rótulo do gabarito (mesmo que a CNN tenha errado a classe: são
-      justamente esses os exemplos mais úteis para o treino);
-    - se a quantidade não bate, a linha é descartada, para não entrar
-      nenhum rótulo errado.
-
-Os recortes vão para datasets/{ponto,traco}/real_<fonte>_<foto>_<n>.png.
-O prefixo "real_" faz o treinamento repetir esses exemplos, e o nome da
-foto mantém todos os recortes de uma foto no mesmo lado da divisão
-treino/validação. Reexecutar substitui a importação anterior da fonte.
-
-Uso (a partir de CodeVision/):
-    python -m ia.importar_fotos_reais fotos_reais
-    python -m ia.importar_fotos_reais fotos_reais --fotos foto01.jpg foto02.jpg
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -41,17 +17,10 @@ CLASSE = {".": "ponto", "-": "traco"}
 
 
 def morse_da_linha(texto: str) -> str:
-    """Sequência de pontos e traços de uma linha, sem espaços nem barras."""
     return "".join(TEXTO_PARA_MORSE.get(letra, "") for letra in texto if letra != " ")
 
 
 def _parear_linhas(contagens: list[int], esperadas: list[str]) -> dict[int, str]:
-    """
-    Associa cada linha encontrada a uma linha do gabarito.
-
-    Se o número de linhas bate, pareia na ordem (de cima para baixo);
-    senão, pareia só as linhas cuja quantidade de símbolos é única.
-    """
     if len(contagens) == len(esperadas):
         return dict(enumerate(esperadas))
 

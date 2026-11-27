@@ -1,14 +1,4 @@
-"""
-Exceções personalizadas do backend do CodeVision.
-
-Centraliza os erros relacionados ao recebimento de imagens,
-ao reconhecimento visual e à integração com a inteligência
-artificial.
-"""
-
-
 class CodeVisionError(Exception):
-    """Exceção base para erros específicos do CodeVision."""
 
     def __init__(self, mensagem="Ocorreu um erro no CodeVision."):
         self.mensagem = mensagem
@@ -16,7 +6,6 @@ class CodeVisionError(Exception):
 
 
 class ErroValidacaoImagem(CodeVisionError):
-    """Erro quando a imagem enviada não atende aos requisitos."""
 
     def __init__(
         self,
@@ -26,7 +15,6 @@ class ErroValidacaoImagem(CodeVisionError):
 
 
 class FormatoImagemNaoSuportado(ErroValidacaoImagem):
-    """Erro quando o formato do arquivo não é aceito."""
 
     def __init__(
         self,
@@ -36,7 +24,6 @@ class FormatoImagemNaoSuportado(ErroValidacaoImagem):
 
 
 class TamanhoImagemExcedido(ErroValidacaoImagem):
-    """Erro quando a imagem ultrapassa o limite permitido."""
 
     def __init__(
         self,
@@ -46,7 +33,6 @@ class TamanhoImagemExcedido(ErroValidacaoImagem):
 
 
 class ErroProcessamentoImagem(CodeVisionError):
-    """Erro durante a leitura ou o processamento da imagem."""
 
     def __init__(
         self,
@@ -56,7 +42,6 @@ class ErroProcessamentoImagem(CodeVisionError):
 
 
 class ModeloIAIndisponivel(CodeVisionError):
-    """Erro quando o modelo de inteligência artificial não está disponível."""
 
     def __init__(
         self,
@@ -66,7 +51,6 @@ class ModeloIAIndisponivel(CodeVisionError):
 
 
 class ErroReconhecimento(CodeVisionError):
-    """Erro durante o reconhecimento dos símbolos da imagem."""
 
     def __init__(
         self,
@@ -76,7 +60,6 @@ class ErroReconhecimento(CodeVisionError):
 
 
 class MensagemNaoDecodificavel(CodeVisionError):
-    """Erro quando não é possível decodificar a mensagem reconhecida."""
 
     def __init__(
         self,
@@ -86,7 +69,6 @@ class MensagemNaoDecodificavel(CodeVisionError):
 
 
 class ErroConfiguracaoIA(CodeVisionError):
-    """Erro relacionado à configuração ou ao carregamento da IA."""
 
     def __init__(
         self,

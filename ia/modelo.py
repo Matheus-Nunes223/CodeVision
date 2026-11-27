@@ -1,26 +1,3 @@
-"""
-Modelo de inteligência artificial do CodeVision.
-
-Classifica recortes de símbolos Morse em três classes:
-    0: fundo
-    1: ponto
-    2: traco
-
-Responsabilidades:
-    - Definir a arquitetura CNN.
-    - Treinar e avaliar o classificador.
-    - Salvar e carregar pesos e metadados.
-    - Classificar imagens individuais e retornar probabilidades.
-
-Formato esperado:
-    - Imagens: (N, 1, 32, 32), com valores entre 0 e 1.
-    - Rótulos: (N,), com valores inteiros entre 0 e 2.
-    - Previsão: imagem com formato (1, 32, 32).
-
-O pré-processamento de imagens brutas e a localização de símbolos
-em imagens completas são responsabilidades de outros módulos.
-"""
-
 from __future__ import annotations
 
 import json
@@ -37,7 +14,6 @@ from torch.utils.data import DataLoader, TensorDataset
 
 
 class RedeNeuralMorse(nn.Module):
-    """Rede neural convolucional para classificar símbolos Morse."""
 
     TAMANHO_IMAGEM = 32
     CANAIS_ENTRADA = 1
@@ -85,7 +61,6 @@ class RedeNeuralMorse(nn.Module):
 
 
 class ModeloCodeVision:
-    """Gerencia treinamento, avaliação, persistência e previsão."""
 
     CLASSES = {
         0: "fundo",
@@ -134,7 +109,6 @@ class ModeloCodeVision:
 
     @property
     def pronto(self) -> bool:
-        """Indica se o modelo possui pesos treinados ou carregados."""
         return self.treinado
 
     @staticmethod
@@ -185,7 +159,6 @@ class ModeloCodeVision:
         rotulos: Any,
         nome_conjunto: str,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Valida e converte imagens e rótulos para tensores."""
 
         try:
             imagens_tensor = torch.as_tensor(
@@ -301,14 +274,6 @@ class ModeloCodeVision:
 
     @staticmethod
     def _aumentar_lote(imagens: torch.Tensor) -> torch.Tensor:
-        """
-        Aumento de dados leve para um lote (N, 1, 32, 32).
-
-        Aplica rotação (±8°), escala (0,9 a 1,1), translação (±8%),
-        redução de resolução (metade do lote), variação de
-        contraste/brilho e ruído gaussiano. Não faz espelhamento.
-        O fundo é replicado nas bordas.
-        """
         n = imagens.size(0)
         dispositivo = imagens.device
 
@@ -336,8 +301,6 @@ class ModeloCodeVision:
             align_corners=False,
         )
 
-        # Baixa resolução: metade do lote é reduzida a 5-16 px e ampliada
-        # de volta, como um símbolo pequeno em foto de celular comprimida.
         reduzir = torch.rand(n, device=dispositivo) < 0.5
         if reduzir.any():
             lado = int(torch.randint(5, 17, (1,)).item())
@@ -349,7 +312,6 @@ class ModeloCodeVision:
                 align_corners=False,
             )
 
-        # Contraste e cor do fundo variam bastante entre papéis e luzes.
         contraste = (0.4 + 0.8 * torch.rand(n, 1, 1, 1, device=dispositivo))
         brilho = (torch.rand(n, 1, 1, 1, device=dispositivo) - 0.5) * 0.4
         saida = (saida - 0.5) * contraste + 0.5 + brilho
@@ -365,7 +327,6 @@ class ModeloCodeVision:
         otimizador: torch.optim.Optimizer | None = None,
         aumentar: bool = False,
     ) -> dict[str, float]:
-        """Executa uma época de treinamento ou avaliação."""
 
         treinando = otimizador is not None
         self.modelo.train(mode=treinando)
@@ -438,29 +399,6 @@ class ModeloCodeVision:
         aumentar_dados: bool = True,
         paciencia: int | None = 6,
     ) -> list[dict[str, float]]:
-        """
-        Treina a CNN e retorna o histórico das métricas.
-
-        Com dados de validação, o treino:
-            - reduz a taxa de aprendizado quando a perda de validação
-              estagna (ReduceLROnPlateau);
-            - interrompe após `paciencia` épocas sem melhora
-              (None desativa);
-            - restaura os pesos da melhor época (menor perda de
-              validação) ao final.
-
-        aumentar_dados:
-            Aplica aumento de dados leve apenas ao treinamento.
-
-        imagens:
-            Tensor (N, 1, 32, 32), com pixels entre 0 e 1.
-
-        rotulos:
-            Tensor (N,), com classes 0, 1 ou 2.
-
-        dados_validacao:
-            Opcionalmente, tupla (imagens_validacao, rotulos_validacao).
-        """
 
         self._validar_parametros_treinamento(
             epocas,
@@ -637,11 +575,6 @@ class ModeloCodeVision:
         *,
         tamanho_lote: int = 32,
     ) -> dict[str, Any]:
-        """
-        Avalia o modelo em dados separados do treinamento.
-
-        Retorna perda, acurácia, matriz de confusão e métricas por classe.
-        """
 
         if not self.treinado:
             raise RuntimeError(
@@ -740,7 +673,6 @@ class ModeloCodeVision:
         }
 
     def salvar(self, caminho_modelo: str | Path | None = None) -> Path:
-        """Salva os pesos e os metadados do modelo."""
 
         if not self.treinado:
             raise RuntimeError(
@@ -783,7 +715,6 @@ class ModeloCodeVision:
         return self.caminho_modelo
 
     def carregar(self, caminho_modelo: str | Path | None = None) -> None:
-        """Carrega os pesos e verifica os metadados, quando disponíveis."""
 
         if caminho_modelo is not None:
             self.caminho_modelo = Path(caminho_modelo)
@@ -851,15 +782,6 @@ class ModeloCodeVision:
 
     @torch.inference_mode()
     def prever(self, imagem: Any) -> dict[str, Any]:
-        """
-        Classifica um recorte de símbolo.
-
-        imagem:
-            Tensor (1, 32, 32), com pixels entre 0 e 1.
-
-        Retorna:
-            Classe, símbolo, confiança e probabilidades por classe.
-        """
 
         if not self.treinado:
             raise RuntimeError(
